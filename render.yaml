@@ -1,0 +1,41 @@
+# Render Blueprint for AI Classroom
+# Deploy both backend and frontend as web services
+
+services:
+  # Backend API Service
+  - type: web
+    name: ai-classroom-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    region: oregon
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GOOGLE_API_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: DATABASE_URL
+        value: sqlite:///./lecture_slides.db
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
+      - key: MAX_FILE_SIZE_MB
+        value: 500
+      - key: TEMP_FILE_DIR
+        value: ./temp_uploads
+      - key: ALLOWED_ORIGINS
+        value: https://ai-classroom.onrender.com
+
+  # Frontend Next.js Service
+  - type: web
+    name: ai-classroom
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    region: oregon
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://ai-classroom-api.onrender.com

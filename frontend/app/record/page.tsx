@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import AuthGuard from '@/components/auth/AuthGuard'
 import AudioRecorder from '@/components/recording/AudioRecorder'
 import { api } from '@/lib/api'
@@ -12,6 +12,7 @@ export default function RecordPage() {
   const [lectureTitle, setLectureTitle] = useState('')
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const handleRecordingComplete = (audioBlob: Blob) => {
     setRecordedBlob(audioBlob)
@@ -34,16 +35,21 @@ export default function RecordPage() {
     try {
       // Create FormData for file upload
       const formData = new FormData()
-      
+
       // Create a file from the blob
       const audioFile = new File([recordedBlob], 'lecture.webm', {
         type: 'audio/webm'
       })
-      
+
       formData.append('file', audioFile)
-      
+
       if (lectureTitle.trim()) {
         formData.append('title', lectureTitle.trim())
+      }
+
+      const dailySessionId = searchParams.get('daily_session_id')
+      if (dailySessionId) {
+        formData.append('daily_session_id', dailySessionId)
       }
 
       // Upload to backend
@@ -60,7 +66,7 @@ export default function RecordPage() {
 
     } catch (error: any) {
       console.error('Upload error:', error)
-      
+
       if (error.response?.status === 413) {
         setUploadError('File too large. Maximum size is 500MB.')
       } else if (error.response?.status === 400) {
@@ -109,6 +115,17 @@ export default function RecordPage() {
               </button>
             </div>
           </div>
+
+          {searchParams.get('daily_session_id') && (
+            <div className="mb-6 bg-indigo-50 border border-indigo-200 rounded-md p-4 flex items-center">
+              <svg className="h-5 w-5 text-indigo-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+              </svg>
+              <span className="text-sm text-indigo-700 font-medium">
+                Recording linked to Daily Session
+              </span>
+            </div>
+          )}
 
           {/* Error Display */}
           {uploadError && (

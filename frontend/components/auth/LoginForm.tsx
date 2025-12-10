@@ -21,16 +21,16 @@ export default function LoginForm() {
 
     try {
       const tokenData = await authAPI.login(email, password)
-      
+
       // Store token first before making authenticated requests
       login(tokenData.access_token, { id: 0, email, is_active: true, created_at: new Date().toISOString() })
-      
+
       // Get user data with the stored token
       const userData = await authAPI.getCurrentUser()
-      
+
       // Update auth store with real user data
       login(tokenData.access_token, userData)
-      
+
       // Redirect to dashboard
       router.push('/dashboard')
     } catch (err: any) {
@@ -57,7 +57,7 @@ export default function LoginForm() {
               {error}
             </div>
           )}
-          
+
           <div className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
@@ -74,7 +74,7 @@ export default function LoginForm() {
                 placeholder="your-email@university.edu"
               />
             </div>
-            
+
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Password
@@ -102,13 +102,18 @@ export default function LoginForm() {
             </button>
           </div>
 
-          <div className="text-center">
+          <div className="text-center space-y-2">
             <span className="text-sm text-gray-600">
               Don&apos;t have an account?{' '}
               <a href="/register" className="font-medium text-indigo-600 hover:text-indigo-500">
                 Create one
               </a>
             </span>
+            <div className="pt-2 border-t border-gray-200">
+              <a href="/guest-login" className="text-sm font-medium text-purple-600 hover:text-purple-500">
+                ✨ Try as Guest (10 min demo)
+              </a>
+            </div>
           </div>
         </form>
       </div>

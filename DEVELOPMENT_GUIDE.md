@@ -30,6 +30,13 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 ### Installation
 
 ```bash
+# Automated setup (recommended)
+# Windows
+setup-dev.bat
+# Linux/macOS
+./setup-dev.sh
+
+# Or manually:
 # Backend
 cd backend
 python -m venv venv
@@ -45,7 +52,10 @@ npm install
 
 ```bash
 # Use the automated script
+# Windows
 start-dev.bat
+# Linux/macOS
+./start-dev.sh
 
 # Or manually:
 # Terminal 1: Backend

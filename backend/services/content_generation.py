@@ -30,7 +30,8 @@ class ContentGenerationService:
             raise ValueError("GOOGLE_API_KEY environment variable is required")
         
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-2.5-pro')
+        # Using latest gemini-2.5-flash model
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Generation configuration
         self.generation_config = genai.types.GenerationConfig(
@@ -94,7 +95,7 @@ class ContentGenerationService:
             metadata = {
                 'original_transcript_length': len(transcript),
                 'slides_generated': len(slides),
-                'generation_model': 'gemini-2.5-pro',
+                'generation_model': 'gemini-pro',
                 'prompt_tokens_estimate': len(prompt.split()),
                 'response_tokens_estimate': len(response.text.split()) if response.text else 0
             }

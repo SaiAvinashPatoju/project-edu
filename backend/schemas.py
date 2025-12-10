@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date
 
 # User schemas
 class UserBase(BaseModel):
@@ -10,13 +10,24 @@ class UserCreate(BaseModel):
     email: str
     password: str
 
+class GuestLogin(BaseModel):
+    email: str
+
 class UserResponse(UserBase):
     id: int
     is_active: bool
+    is_guest: bool = False
     created_at: datetime
+    guest_expires_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+class GuestLoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+    expires_at: datetime
+    is_guest: bool = True
 
 # Token schemas
 class Token(BaseModel):
@@ -26,16 +37,40 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     email: Optional[str] = None
 
+# Daily Session schemas
+class DailySessionBase(BaseModel):
+    date: date
+    title: str
+
+class DailySessionCreate(DailySessionBase):
+    pass
+
+class DailySessionUpdate(BaseModel):
+    title: Optional[str] = None
+    course_material: Optional[str] = None
+
+class DailySessionResponse(DailySessionBase):
+    id: int
+    user_id: int
+    course_material: Optional[str] = None
+    prepared_images: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
 # Lecture Session schemas
 class LectureSessionBase(BaseModel):
     title: Optional[str] = None
 
 class LectureSessionCreate(LectureSessionBase):
-    pass
+    daily_session_id: Optional[int] = None
 
 class LectureSessionResponse(LectureSessionBase):
     id: int
     owner_id: int
+    daily_session_id: Optional[int] = None
     transcript: Optional[str] = None
     audio_duration: Optional[int] = None
     processing_status: str
@@ -62,6 +97,7 @@ class SlideResponse(SlideBase):
     id: int
     session_id: int
     slide_number: int
+    image_url: Optional[str] = None
     confidence_data: Optional[str] = None
     created_at: datetime
     updated_at: datetime

@@ -22,11 +22,20 @@ Lecture to Slides is a comprehensive web application that allows educators to re
 
 #### Automated Setup (Recommended)
 ```bash
-# Windows
-setup.bat
+# Windows - First time setup
+setup-dev.bat
 
-# Linux/macOS
-chmod +x setup.sh && ./setup.sh
+# Linux/macOS - First time setup
+chmod +x setup-dev.sh && ./setup-dev.sh
+```
+
+#### Start Development Servers
+```bash
+# Windows - Start both servers
+start-dev.bat
+
+# Linux/macOS - Start both servers
+chmod +x start-dev.sh && ./start-dev.sh
 ```
 
 #### Manual Setup
@@ -38,7 +47,8 @@ python -m venv venv
 venv\Scripts\activate  # Windows
 # source venv/bin/activate  # Linux/macOS
 pip install -r requirements.txt
-copy .env.example .env  # Configure your settings
+copy .env.example .env  # Windows
+# cp .env.example .env  # Linux/macOS
 python main.py
 ```
 
@@ -64,6 +74,34 @@ start-production.bat
 # Linux/macOS
 chmod +x start-production.sh && ./start-production.sh
 ```
+
+### 🌐 Render Deployment
+
+**1. Using Render Blueprint (Easiest):**
+1. Push your code to GitHub
+2. Go to [Render Dashboard](https://dashboard.render.com/)
+3. Click "New" → "Blueprint"
+4. Connect your GitHub repo
+5. Render will auto-detect `render.yaml` and create services
+
+**2. Manual Render Setup:**
+
+**Backend Service:**
+- Type: Web Service
+- Runtime: Docker
+- Dockerfile Path: `./backend/Dockerfile`
+- Environment Variables:
+  - `SECRET_KEY` - Generate a secure random key
+  - `GOOGLE_API_KEY` - Your Gemini API key
+  - `DATABASE_URL` - `sqlite:///./lecture_slides.db`
+  - `ALLOWED_ORIGINS` - Your frontend URL
+
+**Frontend Service:**
+- Type: Web Service  
+- Runtime: Docker
+- Dockerfile Path: `./frontend/Dockerfile`
+- Environment Variables:
+  - `NEXT_PUBLIC_API_URL` - Your backend service URL
 
 #### Manual Production Setup
 See [Production Deployment Guide](#production-deployment) below.

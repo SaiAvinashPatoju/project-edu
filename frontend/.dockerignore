@@ -1,0 +1,42 @@
+# Files to ignore when building Docker images
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Next.js
+.next/
+out/
+build/
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Tests
+*.test.ts
+*.test.tsx
+jest.config.*
+.coverage/
+
+# Docs
+*.md
+docs/
+
+# Environment (set in Render dashboard)
+.env*

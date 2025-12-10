@@ -91,9 +91,12 @@ class ProcessingPipeline:
             return result
             
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             logger.error(f"Lecture processing failed for session {session_id}: {str(e)}")
+            logger.error(f"Full traceback:\n{error_details}")
             
-            # Update session status to failed
+            # Update session status to failed with error details
             self._update_session_status(session_id, "failed")
             
             # Clean up audio file

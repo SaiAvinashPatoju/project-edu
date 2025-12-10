@@ -12,7 +12,7 @@ export default function AudioRecorder({ onRecordingComplete, onError }: AudioRec
   const [isPaused, setIsPaused] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
-  
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -20,36 +20,60 @@ export default function AudioRecorder({ onRecordingComplete, onError }: AudioRec
 
   const requestMicrophonePermission = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           sampleRate: 44100
-        } 
+        }
       })
-      
+
       streamRef.current = stream
       setHasPermission(true)
-      
-      // Initialize MediaRecorder
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      })
-      
+
+      // Find a supported MIME type
+      const mimeTypes = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+        'audio/mpeg',
+        ''  // Empty string means use browser default
+      ]
+
+      let selectedMimeType = ''
+      for (const mimeType of mimeTypes) {
+        if (mimeType === '' || MediaRecorder.isTypeSupported(mimeType)) {
+          selectedMimeType = mimeType
+          console.log(`Using MIME type: ${mimeType || 'browser default'}`)
+          break
+        }
+      }
+
+      // Initialize MediaRecorder with supported options
+      const recorderOptions: MediaRecorderOptions = {}
+      if (selectedMimeType) {
+        recorderOptions.mimeType = selectedMimeType
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, recorderOptions)
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunksRef.current.push(event.data)
         }
       }
-      
+
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        // Use the actual MIME type from the recorder
+        const actualMimeType = mediaRecorder.mimeType || 'audio/webm'
+        const audioBlob = new Blob(chunksRef.current, { type: actualMimeType })
         onRecordingComplete(audioBlob)
         chunksRef.current = []
       }
-      
+
       mediaRecorderRef.current = mediaRecorder
-      
+
     } catch (error) {
       console.error('Error accessing microphone:', error)
       setHasPermission(false)
@@ -69,12 +93,12 @@ export default function AudioRecorder({ onRecordingComplete, onError }: AudioRec
       setIsRecording(true)
       setIsPaused(false)
       setRecordingTime(0)
-      
+
       // Start timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1)
       }, 1000)
-      
+
     } catch (error) {
       console.error('Error starting recording:', error)
       onError('Failed to start recording. Please try again.')
@@ -85,7 +109,7 @@ export default function AudioRecorder({ onRecordingComplete, onError }: AudioRec
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.pause()
       setIsPaused(true)
-      
+
       if (timerRef.current) {
         clearInterval(timerRef.current)
       }
@@ -96,7 +120,7 @@ export default function AudioRecorder({ onRecordingComplete, onError }: AudioRec
     if (mediaRecorderRef.current && isPaused) {
       mediaRecorderRef.current.resume()
       setIsPaused(false)
-      
+
       // Resume timer
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1)
@@ -109,11 +133,11 @@ export default function AudioRecorder({ onRecordingComplete, onError }: AudioRec
       mediaRecorderRef.current.stop()
       setIsRecording(false)
       setIsPaused(false)
-      
+
       if (timerRef.current) {
         clearInterval(timerRef.current)
       }
-      
+
       // Stop all tracks to release microphone
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
@@ -233,7 +257,7 @@ export default function AudioRecorder({ onRecordingComplete, onError }: AudioRec
                   Resume
                 </button>
               )}
-              
+
               <button
                 onClick={stopRecording}
                 className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-gray-600 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"

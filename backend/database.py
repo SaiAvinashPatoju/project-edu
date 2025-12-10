@@ -24,5 +24,91 @@ def get_db():
         db.close()
 
 def init_db():
-    """Initialize database tables"""
+    """Initialize database tables and migrate schema if needed"""
     Base.metadata.create_all(bind=engine)
+    
+    # Auto-migration using SQLAlchemy engine
+    try:
+        from sqlalchemy import text, inspect
+        inspector = inspect(engine)
+        
+        with engine.connect() as conn:
+            # Check users table
+            if inspector.has_table("users"):
+                columns = [col['name'] for col in inspector.get_columns("users")]
+                
+                if "is_guest" not in columns:
+                    print("Migrating: Adding is_guest to users")
+                    try:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN is_guest BOOLEAN DEFAULT 0"))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Failed to add is_guest: {e}")
+                        
+                if "guest_expires_at" not in columns:
+                    print("Migrating: Adding guest_expires_at to users")
+                    try:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN guest_expires_at DATETIME"))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Failed to add guest_expires_at: {e}")
+
+            # Check slides table
+            if inspector.has_table("slides"):
+                columns = [col['name'] for col in inspector.get_columns("slides")]
+                if "image_url" not in columns:
+                    print("Migrating: Adding image_url to slides")
+                    try:
+                        conn.execute(text("ALTER TABLE slides ADD COLUMN image_url VARCHAR"))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Failed to add image_url: {e}")
+
+            # Check lecture_sessions table
+            if inspector.has_table("lecture_sessions"):
+                columns = [col['name'] for col in inspector.get_columns("lecture_sessions")]
+                if "daily_session_id" not in columns:
+                    print("Migrating: Adding daily_session_id to lecture_sessions")
+                    try:
+                        conn.execute(text("ALTER TABLE lecture_sessions ADD COLUMN daily_session_id INTEGER REFERENCES daily_sessions(id)"))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Failed to add daily_session_id: {e}")
+                        
+    except Exception as e:
+        print(f"Migration warning (SQLAlchemy): {e}")
+
+    # Fallback: Raw SQLite migration (most robust for local dev)
+    try:
+        if "sqlite" in DATABASE_URL:
+            import sqlite3
+            db_path = DATABASE_URL.replace("sqlite:///", "")
+            if os.path.exists(db_path):
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                
+                # Check users
+                try:
+                    cursor.execute("SELECT is_guest FROM users LIMIT 1")
+                except sqlite3.OperationalError:
+                    print("Raw SQLite: Adding is_guest to users")
+                    cursor.execute("ALTER TABLE users ADD COLUMN is_guest BOOLEAN DEFAULT 0")
+                
+                try:
+                    cursor.execute("SELECT guest_expires_at FROM users LIMIT 1")
+                except sqlite3.OperationalError:
+                    print("Raw SQLite: Adding guest_expires_at to users")
+                    cursor.execute("ALTER TABLE users ADD COLUMN guest_expires_at DATETIME")
+                
+                # Check slides
+                try:
+                    cursor.execute("SELECT image_url FROM slides LIMIT 1")
+                except sqlite3.OperationalError:
+                    print("Raw SQLite: Adding image_url to slides")
+                    cursor.execute("ALTER TABLE slides ADD COLUMN image_url VARCHAR")
+                    
+                conn.commit()
+                conn.close()
+                print("Raw SQLite migration checks completed")
+    except Exception as e:
+        print(f"Migration warning (Raw SQLite): {e}")

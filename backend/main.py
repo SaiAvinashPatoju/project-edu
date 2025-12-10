@@ -12,16 +12,20 @@ from database import get_db, init_db
 from auth import (
     authenticate_user, 
     create_user, 
-    create_access_token, 
+    create_guest_user,
+    create_access_token,
+    create_guest_access_token,
     get_current_active_user,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    GUEST_TOKEN_EXPIRE_MINUTES
 )
 from schemas import (
     UserCreate, UserResponse, Token, LectureSessionCreate, LectureSessionResponse,
     ProcessingStartResponse, ProcessingStatusResponse, SessionWithSlidesResponse,
-    SlideResponse, SlideUpdate, ExportRequest, ExportStartResponse, ExportStatusResponse
+    SlideResponse, SlideUpdate, ExportRequest, ExportStartResponse, ExportStatusResponse,
+    GuestLogin, GuestLoginResponse, DailySessionCreate, DailySessionUpdate, DailySessionResponse
 )
-from models import User, LectureSession, Slide, ExportJob
+from models import User, LectureSession, Slide, ExportJob, DailySession
 from services import processing_pipeline, task_manager
 from services.export_task_manager import export_task_manager
 
@@ -83,11 +87,161 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
     """Get current user information"""
     return current_user
 
+@app.post("/auth/guest", response_model=GuestLoginResponse)
+async def guest_login(guest: GuestLogin, db: Session = Depends(get_db)):
+    """Guest login with email only - 10 minute session"""
+    try:
+        guest_user = create_guest_user(db, email=guest.email)
+        access_token = create_guest_access_token(data={"sub": guest_user.email})
+        return GuestLoginResponse(
+            access_token=access_token,
+            token_type="bearer",
+            expires_at=guest_user.guest_expires_at,
+            is_guest=True
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Guest login failed: {str(e)}"
+        )
+
+# Daily Session endpoints
+@app.get("/daily-sessions", response_model=List[DailySessionResponse])
+async def get_daily_sessions(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all daily sessions for the current user"""
+    sessions = db.query(DailySession).filter(
+        DailySession.user_id == current_user.id
+    ).order_by(DailySession.date.desc()).all()
+    return sessions
+
+@app.post("/daily-sessions", response_model=DailySessionResponse)
+async def create_daily_session(
+    session: DailySessionCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new daily session"""
+    db_session = DailySession(
+        user_id=current_user.id,
+        date=session.date,
+        title=session.title
+    )
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return db_session
+
+@app.get("/daily-sessions/{session_id}", response_model=DailySessionResponse)
+async def get_daily_session(
+    session_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get a specific daily session"""
+    session = db.query(DailySession).filter(
+        DailySession.id == session_id,
+        DailySession.user_id == current_user.id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Daily session not found")
+    return session
+
+@app.put("/daily-sessions/{session_id}", response_model=DailySessionResponse)
+async def update_daily_session(
+    session_id: int,
+    session_update: DailySessionUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update a daily session"""
+    session = db.query(DailySession).filter(
+        DailySession.id == session_id,
+        DailySession.user_id == current_user.id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Daily session not found")
+    
+    if session_update.title is not None:
+        session.title = session_update.title
+    if session_update.course_material is not None:
+        session.course_material = session_update.course_material
+    
+    db.commit()
+    db.refresh(session)
+    return session
+
+@app.delete("/daily-sessions/{session_id}")
+async def delete_daily_session(
+    session_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a daily session"""
+    session = db.query(DailySession).filter(
+        DailySession.id == session_id,
+        DailySession.user_id == current_user.id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Daily session not found")
+    
+    db.delete(session)
+    db.commit()
+    return {"message": "Daily session deleted"}
+
+@app.post("/daily-sessions/{session_id}/material")
+async def upload_course_material(
+    session_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Upload course material to a daily session for AI pre-processing"""
+    session = db.query(DailySession).filter(
+        DailySession.id == session_id,
+        DailySession.user_id == current_user.id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Daily session not found")
+    
+    # Validate file type
+    valid_types = {'text/plain', 'application/pdf', 'application/msword',
+                   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}
+    if file.content_type not in valid_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Supported: TXT, PDF, DOC, DOCX"
+        )
+    
+    # Read file content (for now just store text, PDF parsing can be added later)
+    content = await file.read()
+    if file.content_type == 'text/plain':
+        session.course_material = content.decode('utf-8')
+    else:
+        # For binary files, store as base64 or implement PDF parser
+        session.course_material = f"[Binary file: {file.filename}]"
+    
+    db.commit()
+    db.refresh(session)
+    
+    return {
+        "message": "Course material uploaded",
+        "session_id": session_id,
+        "filename": file.filename
+    }
+
 # Lecture processing endpoints
 @app.post("/lectures/process", response_model=ProcessingStartResponse)
 async def process_lecture(
     file: UploadFile = File(...),
     title: str = None,
+    daily_session_id: int = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -117,6 +271,7 @@ async def process_lecture(
         # Create lecture session
         session = LectureSession(
             owner_id=current_user.id,
+            daily_session_id=daily_session_id,
             title=title or f"Lecture {uuid.uuid4().hex[:8]}",
             processing_status="pending"
         )

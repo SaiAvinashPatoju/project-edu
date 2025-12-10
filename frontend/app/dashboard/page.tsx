@@ -2,6 +2,7 @@
 
 import AuthGuard from '@/components/auth/AuthGuard'
 import SessionList from '@/components/dashboard/SessionList'
+import DailySessionList from '@/components/dashboard/DailySessionList'
 import { useAuthStore } from '@/lib/auth-store'
 import { useRouter } from 'next/navigation'
 
@@ -28,7 +29,7 @@ export default function DashboardPage() {
                 onClick={() => router.push('/record')}
                 className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
-                Start New Session
+                Quick Record
               </button>
               <button
                 onClick={handleLogout}
@@ -39,9 +40,15 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="py-8">
-            <div className="mb-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Your Lecture Sessions</h2>
+          <div className="py-8 space-y-8">
+            {/* Daily Sessions Section */}
+            <div>
+              <DailySessionList />
+            </div>
+
+            {/* Lecture History Section */}
+            <div className="border-t border-gray-200 pt-8">
+              <h2 className="text-lg font-medium text-gray-900 mb-4">All Lecture Recordings</h2>
               <SessionList />
             </div>
           </div>

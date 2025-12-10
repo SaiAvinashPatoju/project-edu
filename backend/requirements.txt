@@ -11,6 +11,6 @@ pytest==7.4.3
 pytest-asyncio==0.21.1
 httpx==0.25.2
 faster-whisper==0.10.0
-google-generativeai==0.3.2
+google-generativeai>=0.8.0
 reportlab==4.0.7
 python-pptx==0.6.23

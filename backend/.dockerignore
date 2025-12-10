@@ -1,0 +1,70 @@
+# Files to ignore when building Docker images
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Database files (use mounted volumes in production)
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Tests
+tests/
+*.test.py
+pytest.ini
+.pytest_cache/
+.coverage
+
+# Docs
+*.md
+docs/
+
+# Temporary files
+temp_uploads/
+exports/
+*.tmp
+*.temp
+*.log
+
+# Debug scripts
+debug_*.py
+migrate_*.py
+verify_*.py
