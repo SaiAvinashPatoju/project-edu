@@ -25,7 +25,8 @@ def get_db():
 
 def init_db():
     """Initialize database tables and migrate schema if needed"""
-    Base.metadata.create_all(bind=engine)
+    # checkfirst=True prevents errors when multiple workers start simultaneously
+    Base.metadata.create_all(bind=engine, checkfirst=True)
     
     # Auto-migration using SQLAlchemy engine
     try:

@@ -1,35 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { use } from 'react'
 import AuthGuard from '@/components/auth/AuthGuard'
 import SlidesViewer from '@/components/slides/SlidesViewer'
 
 interface EditorPageProps {
-  params: { sessionId: string }
+  params: Promise<{ sessionId: string }>
 }
 
 export default function EditorPage({ params }: EditorPageProps) {
-  const [sessionId, setSessionId] = useState<string | null>(null)
-
-  useEffect(() => {
-    // Handle both sync and async params
-    if (params?.sessionId) {
-      setSessionId(params.sessionId)
-    } else if (typeof params === 'object' && 'then' in params) {
-      params.then((resolvedParams: any) => {
-        setSessionId(resolvedParams.sessionId)
-      })
-    }
-  }, [params])
-
-  if (!sessionId) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
-      </div>
-    )
-  }
-
+  const resolvedParams = use(params)
+  const sessionId = resolvedParams.sessionId
   const sessionIdNum = parseInt(sessionId, 10)
 
   if (isNaN(sessionIdNum)) {

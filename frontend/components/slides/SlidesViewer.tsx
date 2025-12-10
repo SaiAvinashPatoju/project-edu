@@ -15,6 +15,7 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
   const [currentSlide, setCurrentSlide] = useState(0)
   const router = useRouter()
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadSessionData()
   }, [sessionId])
@@ -202,8 +203,8 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
                 key={slide.id}
                 onClick={() => setCurrentSlide(index)}
                 className={`cursor-pointer border-2 rounded-lg p-3 transition-colors ${index === currentSlide
-                    ? 'border-indigo-500 bg-indigo-50'
-                    : 'border-gray-200 bg-white hover:border-gray-300'
+                  ? 'border-indigo-500 bg-indigo-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
                   }`}
               >
                 <div className="text-xs text-gray-500 mb-1">Slide {slide.slide_number}</div>

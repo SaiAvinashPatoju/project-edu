@@ -26,10 +26,6 @@ export default function DailySessionDetailPage() {
     const [uploading, setUploading] = useState(false)
     const [uploadSuccess, setUploadSuccess] = useState(false)
 
-    useEffect(() => {
-        fetchSession()
-    }, [sessionId])
-
     const fetchSession = async () => {
         try {
             const response = await api.get(`/daily-sessions/${sessionId}`)
@@ -40,6 +36,11 @@ export default function DailySessionDetailPage() {
             setLoading(false)
         }
     }
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        fetchSession()
+    }, [sessionId])
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
