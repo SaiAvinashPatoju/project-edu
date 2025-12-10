@@ -1,0 +1,9 @@
+{
+    "name": "AI Classroom",
+    "short_name": "AI Classroom",
+    "description": "Transform lectures into professional slide presentations",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#1e1b4b",
+    "theme_color": "#4f46e5"
+}
