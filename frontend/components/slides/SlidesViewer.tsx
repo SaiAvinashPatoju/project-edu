@@ -68,7 +68,7 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
               </button>
             </div>
           </div>
-          
+
           {/* Debug info */}
           <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-left">
             <h4 className="font-medium text-yellow-800 mb-2">Debug Info:</h4>
@@ -82,9 +82,9 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
                     'Authorization': `Bearer ${localStorage.getItem('auth-storage') ? JSON.parse(localStorage.getItem('auth-storage')!).state.token : 'no-token'}`
                   }
                 })
-                .then(res => res.json())
-                .then(data => console.log('Direct API response:', data))
-                .catch(err => console.error('Direct API error:', err))
+                  .then(res => res.json())
+                  .then(data => console.log('Direct API response:', data))
+                  .catch(err => console.error('Direct API error:', err))
               }}
               className="mt-2 bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700"
             >
@@ -101,7 +101,7 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Slides Found</h3>
-          <p className="text-gray-600 mb-4">This session doesn't have any slides yet.</p>
+          <p className="text-gray-600 mb-4">This session doesn&apos;t have any slides yet.</p>
           <button
             onClick={() => router.push('/dashboard')}
             className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
@@ -201,11 +201,10 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
               <div
                 key={slide.id}
                 onClick={() => setCurrentSlide(index)}
-                className={`cursor-pointer border-2 rounded-lg p-3 transition-colors ${
-                  index === currentSlide
+                className={`cursor-pointer border-2 rounded-lg p-3 transition-colors ${index === currentSlide
                     ? 'border-indigo-500 bg-indigo-50'
                     : 'border-gray-200 bg-white hover:border-gray-300'
-                }`}
+                  }`}
               >
                 <div className="text-xs text-gray-500 mb-1">Slide {slide.slide_number}</div>
                 <div className="text-sm font-medium text-gray-900 truncate">

@@ -11,12 +11,12 @@ interface ExportDialogProps {
   onExportStarted: (exportId: number, format: string) => void
 }
 
-export default function ExportDialog({ 
-  sessionId, 
-  sessionTitle, 
-  isOpen, 
-  onClose, 
-  onExportStarted 
+export default function ExportDialog({
+  sessionId,
+  sessionTitle,
+  isOpen,
+  onClose,
+  onExportStarted
 }: ExportDialogProps) {
   const [selectedFormat, setSelectedFormat] = useState<'pdf' | 'pptx'>('pdf')
   const [isExporting, setIsExporting] = useState(false)
@@ -56,7 +56,7 @@ export default function ExportDialog({
         </div>
 
         <div className="mb-4">
-          <p className="text-gray-600 mb-2">Export "{sessionTitle}&quot; as:</p>
+          <p className="text-gray-600 mb-2">Export &quot;{sessionTitle}&quot; as:</p>
         </div>
 
         <div className="space-y-3 mb-6">
