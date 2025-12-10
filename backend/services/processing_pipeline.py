@@ -176,11 +176,24 @@ class ProcessingPipeline:
                     'slide_number': i + 1
                 }
                 
+                # Handle columns data
+                columns_data = None
+                if hasattr(slide_content, 'columns') and slide_content.columns:
+                    columns_data = json.dumps(slide_content.columns)
+                
+                # Handle image keywords
+                image_keywords = None
+                if hasattr(slide_content, 'image_keywords') and slide_content.image_keywords:
+                    image_keywords = json.dumps(slide_content.image_keywords)
+                
                 slide = Slide(
                     session_id=session_id,
                     slide_number=i + 1,
                     title=slide_content.title,
                     content=json.dumps(slide_content.content),  # Store as JSON
+                    slide_type=getattr(slide_content, 'slide_type', 'content-slide'),
+                    columns_data=columns_data,
+                    image_keywords=image_keywords,
                     confidence_data=json.dumps(confidence_data)
                 )
                 db.add(slide)

@@ -64,6 +64,30 @@ def init_db():
                         conn.commit()
                     except Exception as e:
                         print(f"Failed to add image_url: {e}")
+                
+                if "slide_type" not in columns:
+                    print("Migrating: Adding slide_type to slides")
+                    try:
+                        conn.execute(text("ALTER TABLE slides ADD COLUMN slide_type VARCHAR DEFAULT 'content-slide'"))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Failed to add slide_type: {e}")
+                
+                if "columns_data" not in columns:
+                    print("Migrating: Adding columns_data to slides")
+                    try:
+                        conn.execute(text("ALTER TABLE slides ADD COLUMN columns_data TEXT"))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Failed to add columns_data: {e}")
+                
+                if "image_keywords" not in columns:
+                    print("Migrating: Adding image_keywords to slides")
+                    try:
+                        conn.execute(text("ALTER TABLE slides ADD COLUMN image_keywords TEXT"))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Failed to add image_keywords: {e}")
 
             # Check lecture_sessions table
             if inspector.has_table("lecture_sessions"):

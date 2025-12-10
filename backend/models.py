@@ -66,7 +66,10 @@ class Slide(Base):
     slide_number = Column(Integer, nullable=False)
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)  # JSON array of bullet points
+    slide_type = Column(String, default="content-slide")  # title-slide, content-slide, split-slide, etc.
+    columns_data = Column(Text, nullable=True)  # JSON for two-column layouts
     image_url = Column(String, nullable=True)  # Prepared image for this slide
+    image_keywords = Column(Text, nullable=True)  # JSON array of image search keywords
     confidence_data = Column(Text, nullable=True)  # JSON with word-level confidence
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
