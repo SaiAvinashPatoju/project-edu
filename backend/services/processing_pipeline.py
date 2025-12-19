@@ -1,5 +1,6 @@
 """
 Main processing pipeline that orchestrates transcription and slide generation.
+Uses local models only: Moonshine ASR + Qwen 2.5 LLM (offline-first).
 """
 import os
 import json
@@ -17,13 +18,13 @@ from database import SessionLocal
 logger = logging.getLogger(__name__)
 
 class ProcessingPipeline:
-    """Orchestrates the complete lecture processing pipeline."""
+    """Orchestrates the complete lecture processing pipeline using local models."""
     
     def __init__(self):
-        """Initialize the processing pipeline."""
-        self.transcription_service = TranscriptionService(
-            model_size=os.getenv("WHISPER_MODEL_SIZE", "base")
-        )
+        """Initialize the processing pipeline with local model services."""
+        # Moonshine ASR for transcription
+        self.transcription_service = TranscriptionService()
+        # Qwen 2.5 LLM for slide generation
         self.content_generation_service = ContentGenerationService()
     
     def process_lecture(self, session_id: int, audio_file_path: str) -> Dict[str, Any]:

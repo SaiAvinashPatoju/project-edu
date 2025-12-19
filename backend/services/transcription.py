@@ -1,27 +1,48 @@
 """
-Transcription service using faster-whisper for speech-to-text conversion.
-Falls back to mock mode if faster-whisper is not available.
+Transcription service using Moonshine (UsefulSensors) for speech-to-text.
+Runs fully offline after initial model download.
 """
 import os
 import logging
-from typing import Dict, List, Optional, NamedTuple
+import glob
+import subprocess
+import tempfile
+from typing import Dict, List, NamedTuple
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Try to import faster-whisper, fall back to mock mode if unavailable
-WHISPER_AVAILABLE = False
-WhisperModel = None
+# Set Keras backend to torch before importing moonshine
+os.environ.setdefault('KERAS_BACKEND', 'torch')
 
-try:
-    from faster_whisper import WhisperModel as _WhisperModel
-    WhisperModel = _WhisperModel
-    WHISPER_AVAILABLE = True
-    logger.info("faster-whisper loaded successfully")
-except ImportError as e:
-    logger.warning(f"faster-whisper not available: {e}. Using mock transcription mode.")
-except Exception as e:
-    logger.warning(f"Failed to load faster-whisper: {e}. Using mock transcription mode.")
+def _find_ffmpeg() -> str:
+    """Find ffmpeg executable, checking common installation locations."""
+    import shutil
+    
+    # Check if ffmpeg is in PATH
+    ffmpeg_path = shutil.which('ffmpeg')
+    if ffmpeg_path:
+        return ffmpeg_path
+    
+    # Check WinGet installation location
+    winget_base = os.path.expandvars(r'%LOCALAPPDATA%\Microsoft\WinGet\Packages')
+    if os.path.exists(winget_base):
+        for pattern in ['*ffmpeg*/**/ffmpeg.exe', '*FFmpeg*/**/ffmpeg.exe']:
+            matches = glob.glob(os.path.join(winget_base, pattern), recursive=True)
+            if matches:
+                return matches[0]
+    
+    # Check common Windows locations
+    common_paths = [
+        r'C:\ffmpeg\bin\ffmpeg.exe',
+        r'C:\Program Files\ffmpeg\bin\ffmpeg.exe',
+        r'C:\tools\ffmpeg\bin\ffmpeg.exe',
+    ]
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
 
 class TranscriptionSegment(NamedTuple):
     """Represents a segment of transcribed text with confidence data."""
@@ -40,46 +61,78 @@ class TranscriptionResult(NamedTuple):
     low_confidence_words: List[str]
 
 class TranscriptionService:
-    """Service for transcribing audio files using faster-whisper."""
+    """
+    Service for transcribing audio files using Moonshine ASR.
     
-    def __init__(self, model_size: str = "base"):
+    Uses UsefulSensors/moonshine-base model via official moonshine package.
+    Runs completely offline after initial model download.
+    """
+    
+    def __init__(self, model_name: str = None):
         """
         Initialize the transcription service.
         
         Args:
-            model_size: Whisper model size (tiny, base, small, medium, large)
+            model_name: Moonshine model name (moonshine/tiny or moonshine/base)
         """
-        self.model_size = model_size
-        self._model = None
-        self.confidence_threshold = 0.7  # Words below this are marked as low confidence
-        self.use_mock = not WHISPER_AVAILABLE or os.getenv("USE_MOCK_TRANSCRIPTION", "false").lower() == "true"
+        self.model_name = model_name or os.getenv("MOONSHINE_MODEL", "moonshine/base")
+        self._moonshine = None
+        self.use_mock = os.getenv("USE_MOCK_TRANSCRIPTION", "false").lower() == "true"
         
         if self.use_mock:
-            logger.warning("TranscriptionService running in MOCK mode - will generate sample transcripts")
-        
-    def _get_model(self):
-        """Lazy load the Whisper model."""
-        if self.use_mock:
-            return None
-            
-        if self._model is None:
-            if WhisperModel is None:
-                raise RuntimeError("faster-whisper is not installed. Install with: pip install faster-whisper")
-            logger.info(f"Loading Whisper model: {self.model_size}")
+            logger.warning("TranscriptionService running in MOCK mode")
+        else:
+            logger.info(f"TranscriptionService initialized with model: {self.model_name}")
+    
+    def _get_moonshine(self):
+        """Lazy load the Moonshine module."""
+        if self._moonshine is None:
             try:
-                self._model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+                import moonshine
+                self._moonshine = moonshine
+                logger.info(f"Moonshine ASR module loaded successfully")
             except Exception as e:
-                logger.error(f"Failed to load Whisper model: {e}")
-                raise RuntimeError(f"Failed to load Whisper model: {e}")
-        return self._model
+                logger.error(f"Failed to load Moonshine: {e}")
+                raise RuntimeError(f"Failed to load Moonshine ASR: {e}")
+        return self._moonshine
+    
+    def _convert_to_wav(self, file_path: str) -> str:
+        """Convert audio file to WAV format using ffmpeg."""
+        ffmpeg_path = _find_ffmpeg()
+        if not ffmpeg_path:
+            raise RuntimeError(
+                "ffmpeg not found. Please install ffmpeg: "
+                "Windows: winget install ffmpeg"
+            )
+        
+        # Create temp wav file
+        tmp_wav = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+        tmp_wav_path = tmp_wav.name
+        tmp_wav.close()
+        
+        logger.info(f"Converting audio with ffmpeg: {ffmpeg_path}")
+        
+        cmd = [
+            ffmpeg_path, '-y', '-i', file_path,
+            '-ar', '16000',  # Resample to 16kHz
+            '-ac', '1',  # Mono
+            '-f', 'wav',
+            tmp_wav_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"ffmpeg error: {result.stderr}")
+            raise RuntimeError(f"ffmpeg conversion failed: {result.stderr}")
+        
+        return tmp_wav_path
     
     def _generate_mock_transcript(self, file_path: str) -> TranscriptionResult:
         """Generate a mock transcript for testing/development."""
         logger.info(f"Generating mock transcript for: {file_path}")
         
-        # Get file size to estimate duration
         file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-        estimated_duration = max(60.0, file_size / 16000)  # Rough estimate
+        estimated_duration = max(60.0, file_size / 16000)
         
         mock_transcript = """
         Welcome to today's lecture on Introduction to Machine Learning.
@@ -88,21 +141,7 @@ class TranscriptionService:
         
         There are three main types of machine learning: supervised learning, unsupervised learning, and reinforcement learning.
         
-        In supervised learning, the algorithm learns from labeled training data, and makes predictions based on that data.
-        
-        Unsupervised learning involves training on data without labeled responses, the algorithm tries to find patterns in the data.
-        
-        Reinforcement learning is about taking suitable action to maximize reward in a particular situation.
-        
-        Today we will focus on supervised learning algorithms including linear regression, decision trees, and neural networks.
-        
-        Linear regression is used for predicting continuous values based on input features.
-        
-        Decision trees are flowchart-like structures that make decisions based on asking a series of questions.
-        
-        Neural networks are inspired by the human brain and can learn complex patterns in data.
-        
-        Thank you for attending today's lecture. Please review the materials and complete the practice exercises.
+        Thank you for attending today's lecture.
         """.strip()
         
         segments = [
@@ -125,13 +164,15 @@ class TranscriptionService:
     
     def transcribe_audio(self, file_path: str) -> TranscriptionResult:
         """
-        Transcribe an audio file to text with confidence scores.
+        Transcribe an audio file to text.
+        
+        Uses Moonshine ASR model for local, offline transcription.
         
         Args:
             file_path: Path to the audio file
             
         Returns:
-            TranscriptionResult with full transcript and confidence data
+            TranscriptionResult with full transcript
             
         Raises:
             FileNotFoundError: If audio file doesn't exist
@@ -144,74 +185,67 @@ class TranscriptionService:
         if self.use_mock:
             return self._generate_mock_transcript(file_path)
         
+        tmp_wav_path = None
         try:
             logger.info(f"Starting transcription of: {file_path}")
-            model = self._get_model()
             
-            # Transcribe with word-level timestamps and confidence
-            segments, info = model.transcribe(
-                file_path,
-                word_timestamps=True,
-                vad_filter=True,  # Voice activity detection
-                vad_parameters=dict(min_silence_duration_ms=500)
-            )
+            # Check if file needs conversion
+            file_ext = Path(file_path).suffix.lower()
+            if file_ext not in ['.wav']:
+                logger.info(f"Converting {file_ext} to WAV...")
+                tmp_wav_path = self._convert_to_wav(file_path)
+                audio_path = tmp_wav_path
+            else:
+                audio_path = file_path
             
-            # Process segments and extract confidence data
-            processed_segments = []
-            full_text_parts = []
-            low_confidence_words = []
+            # Get moonshine module and transcribe
+            moonshine = self._get_moonshine()
             
-            for segment in segments:
-                # Extract word-level confidence data
-                words_data = []
-                segment_text_parts = []
-                
-                if hasattr(segment, 'words') and segment.words:
-                    for word in segment.words:
-                        word_data = {
-                            'word': word.word,
-                            'start': word.start,
-                            'end': word.end,
-                            'confidence': getattr(word, 'probability', 1.0)
-                        }
-                        words_data.append(word_data)
-                        segment_text_parts.append(word.word)
-                        
-                        # Track low confidence words
-                        if word_data['confidence'] < self.confidence_threshold:
-                            low_confidence_words.append(word.word.strip())
-                
-                segment_text = ''.join(segment_text_parts) if segment_text_parts else segment.text
-                full_text_parts.append(segment_text)
-                
-                processed_segment = TranscriptionSegment(
-                    start=segment.start,
-                    end=segment.end,
-                    text=segment_text,
-                    confidence=getattr(segment, 'avg_logprob', 0.0),
-                    words=words_data
+            logger.info(f"Transcribing with Moonshine model: {self.model_name}")
+            result = moonshine.transcribe(audio_path, self.model_name)
+            
+            # Result is a list of transcriptions (one per audio file)
+            full_text = result[0] if result else ""
+            
+            # Get estimated duration
+            import soundfile as sf
+            data, sr = sf.read(audio_path)
+            duration = len(data) / sr
+            
+            # Create single segment (Moonshine doesn't provide word-level timestamps)
+            segments = [
+                TranscriptionSegment(
+                    start=0.0,
+                    end=duration,
+                    text=full_text,
+                    confidence=0.9,
+                    words=[]
                 )
-                processed_segments.append(processed_segment)
-            
-            full_text = ' '.join(full_text_parts)
+            ]
             
             result = TranscriptionResult(
                 text=full_text,
-                segments=processed_segments,
-                language=info.language,
-                duration=info.duration,
-                low_confidence_words=list(set(low_confidence_words))  # Remove duplicates
+                segments=segments,
+                language="en",  # Moonshine is English-only
+                duration=duration,
+                low_confidence_words=[]
             )
             
-            logger.info(f"Transcription completed. Duration: {info.duration:.2f}s, "
-                       f"Language: {info.language}, "
-                       f"Low confidence words: {len(result.low_confidence_words)}")
+            logger.info(f"Transcription completed. Duration: {duration:.2f}s, "
+                       f"Text length: {len(full_text)} chars")
             
             return result
             
         except Exception as e:
             logger.error(f"Transcription failed for {file_path}: {str(e)}")
             raise Exception(f"Transcription failed: {str(e)}")
+        finally:
+            # Clean up temp file
+            if tmp_wav_path and os.path.exists(tmp_wav_path):
+                try:
+                    os.unlink(tmp_wav_path)
+                except:
+                    pass
     
     def validate_audio_file(self, file_path: str) -> bool:
         """
@@ -224,7 +258,6 @@ class TranscriptionService:
             True if file is valid, False otherwise
         """
         try:
-            # Check file exists and has reasonable size
             if not os.path.exists(file_path):
                 return False
             
@@ -232,7 +265,7 @@ class TranscriptionService:
             if file_size == 0:
                 return False
             
-            # Check file extension (basic validation)
+            # Check file extension
             valid_extensions = {'.wav', '.mp3', '.m4a', '.flac', '.ogg', '.webm'}
             file_ext = Path(file_path).suffix.lower()
             

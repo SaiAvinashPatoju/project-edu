@@ -29,17 +29,18 @@ fi
 
 # Environment variables for backend
 export SECRET_KEY="super_secret_jwt_key_for_development_change_in_production_12345"
-export GOOGLE_API_KEY="AIzaSyCIk5gH-tDX2ygGeNlCAykpVGDtzrngCRY"
 export DATABASE_URL="sqlite:///./lectures.db"
 export ACCESS_TOKEN_EXPIRE_MINUTES=30
-export WHISPER_MODEL_SIZE="base"
 export TEMP_FILE_DIR="./temp_uploads"
 export MAX_FILE_SIZE_MB=500
 export MAX_DURATION_MINUTES=120
 export BACKGROUND_TASK_TIMEOUT=3600
 export CLEANUP_INTERVAL_HOURS=24
-# Enable mock transcription if faster-whisper is not installed
-export USE_MOCK_TRANSCRIPTION="true"
+
+# Local AI Models (Offline-first)
+export MOONSHINE_MODEL="UsefulSensors/moonshine-base"
+export QWEN_MODEL_PATH="../models/qwen2.5-7b.gguf"
+export USE_MOCK_TRANSCRIPTION="false"
 
 # Function to cleanup on exit
 cleanup() {

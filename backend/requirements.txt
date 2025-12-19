@@ -10,8 +10,13 @@ python-dotenv==1.0.0
 pytest==7.4.3
 pytest-asyncio==0.21.1
 httpx==0.25.2
-# faster-whisper removed - using mock transcription in cloud deployment
-# Install locally for real transcription: pip install faster-whisper==0.10.0
-google-generativeai>=0.8.0
 reportlab==4.0.7
 python-pptx==0.6.23
+
+# Local AI Models (Offline-first)
+# Moonshine ASR (UsefulSensors)
+useful-moonshine @ git+https://github.com/usefulsensors/moonshine.git
+soundfile>=0.12.1
+
+# Qwen 2.5 via llama-cpp-python
+llama-cpp-python>=0.2.90

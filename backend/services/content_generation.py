@@ -1,15 +1,23 @@
 """
-Content generation service using Google Gemini API for creating slides from transcripts.
-Enhanced with structured K-12 instructional design prompts.
+Content generation service using Qwen 2.5 via llama-cpp-python for creating slides from transcripts.
+Runs fully offline with local GGUF model.
+
+TEACHER-FAITHFUL POLICY:
+- The LLM is used ONLY to organize and clarify teacher's spoken content
+- NO external knowledge, examples, or corrections are added
+- Transcript is treated as ground truth
 """
 import os
 import json
 import logging
+import glob
 from typing import Dict, List, Optional, NamedTuple, Any
-import google.generativeai as genai
 from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
+
+# Lazy import for llama-cpp
+_llama = None
 
 class SlideContent(BaseModel):
     """Represents a single slide's content."""
@@ -27,25 +35,111 @@ class SlideGenerationResult(NamedTuple):
     metadata: Dict[str, any]
 
 class ContentGenerationService:
-    """Service for generating slide content from transcripts using Google Gemini."""
+    """
+    Service for generating slide content from transcripts using Qwen 2.5 LLM.
     
+    Uses llama-cpp-python for local, offline inference with GGUF models.
+    Enforces teacher-faithful content policy: NO external knowledge added.
+    """
+    
+    # Teacher-faithful system prompt
+    SYSTEM_PROMPT = """You are a slide structuring assistant. Your ONLY job is to reorganize the teacher's spoken content into structured slides.
+
+STRICT RULES - YOU MUST FOLLOW THESE EXACTLY:
+1. Use ONLY words, concepts, and information from the transcript
+2. DO NOT add examples not mentioned by the teacher
+3. DO NOT add definitions the teacher did not provide
+4. DO NOT correct any factual errors - preserve teacher's words
+5. DO NOT introduce external knowledge or context
+6. You may ONLY: organize, group related points, improve phrasing clarity
+7. Keep teacher's terminology and explanations intact
+
+OUTPUT FORMAT:
+- Return ONLY valid JSON, no markdown, no explanations
+- Follow the exact schema provided"""
+
     def __init__(self):
         """Initialize the content generation service."""
-        self.api_key = os.getenv("GOOGLE_API_KEY")
-        if not self.api_key:
-            raise ValueError("GOOGLE_API_KEY environment variable is required")
+        self.model_path = self._find_model_path()
+        self._llm = None
         
-        genai.configure(api_key=self.api_key)
-        # Using latest gemini-2.5-flash model
-        self.model = genai.GenerativeModel('gemini-2.5-flash')
+        # Generation parameters for deterministic output
+        self.temperature = 0.1  # Low for consistency
+        self.top_p = 0.9
+        self.max_tokens = 4096
+        self.repeat_penalty = 1.1
         
-        # Generation configuration
-        self.generation_config = genai.types.GenerationConfig(
-            temperature=0.3,  # Lower temperature for more consistent output
-            top_p=0.8,
-            top_k=40,
-            max_output_tokens=8192,
+        logger.info(f"ContentGenerationService initialized with model: {self.model_path}")
+    
+    def _find_model_path(self) -> str:
+        """Find the GGUF model path."""
+        # Check environment variable first
+        env_path = os.getenv("QWEN_MODEL_PATH")
+        if env_path and os.path.exists(env_path):
+            return env_path
+        
+        # Default paths to check
+        default_paths = [
+            os.path.join(os.path.dirname(__file__), "..", "..", "models", "qwen2.5-7b.gguf"),
+            os.path.join(os.path.dirname(__file__), "..", "models", "qwen2.5-7b.gguf"),
+            "../models/qwen2.5-7b.gguf",
+            "models/qwen2.5-7b.gguf",
+        ]
+        
+        for path in default_paths:
+            abs_path = os.path.abspath(path)
+            if os.path.isdir(abs_path):
+                # Look for GGUF files in directory (handles split files)
+                gguf_files = glob.glob(os.path.join(abs_path, "*.gguf"))
+                if gguf_files:
+                    # Return the first file - llama-cpp handles split files automatically
+                    # by loading the first file (00001-of-00002)
+                    gguf_files.sort()
+                    logger.info(f"Found GGUF files: {gguf_files}")
+                    return gguf_files[0]
+            elif os.path.isfile(abs_path) and abs_path.endswith('.gguf'):
+                return abs_path
+        
+        raise ValueError(
+            "GGUF model not found. Please set QWEN_MODEL_PATH environment variable "
+            "or place model in models/qwen2.5-7b.gguf/"
         )
+    
+    def _get_llm(self):
+        """Lazy load the LLM."""
+        global _llama
+        
+        if self._llm is None:
+            try:
+                from llama_cpp import Llama
+                _llama = Llama
+                
+                logger.info(f"Loading Qwen 2.5 model from: {self.model_path}")
+                
+                # Determine GPU layers
+                n_gpu_layers = 0
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        n_gpu_layers = -1  # Use all layers on GPU
+                        logger.info("Using CUDA for LLM inference")
+                except ImportError:
+                    pass
+                
+                self._llm = Llama(
+                    model_path=self.model_path,
+                    n_ctx=8192,  # Context window
+                    n_batch=512,
+                    n_gpu_layers=n_gpu_layers,
+                    verbose=False
+                )
+                logger.info("Qwen 2.5 model loaded successfully")
+                
+            except Exception as e:
+                logger.error(f"Failed to load LLM: {e}")
+                raise RuntimeError(f"Failed to load LLM: {e}")
+        
+        return self._llm
     
     def generate_slides(
         self, 
@@ -60,11 +154,14 @@ class ContentGenerationService:
         """
         Generate slides from a lecture transcript.
         
+        TEACHER-FAITHFUL: Only reorganizes and clarifies teacher's spoken content.
+        Does NOT add external knowledge, examples, or corrections.
+        
         Args:
-            transcript: The full lecture transcript
+            transcript: The full lecture transcript (ground truth)
             max_slides: Maximum number of slides to generate
-            notes: Optional teacher notes
-            syllabus: Optional syllabus outline
+            notes: Optional teacher notes (may be used for context)
+            syllabus: Optional syllabus outline (may be used for organization)
             subject: Subject name
             grade: Grade level
             theme: Theme color for slides
@@ -81,31 +178,39 @@ class ContentGenerationService:
         try:
             logger.info(f"Generating slides from transcript ({len(transcript)} characters)")
             
-            # Create structured prompt for slide generation
-            prompt = self._create_enhanced_prompt(
+            # Create teacher-faithful prompt
+            prompt = self._create_teacher_faithful_prompt(
                 transcript=transcript,
                 notes=notes,
                 syllabus=syllabus,
                 subject=subject,
                 grade=grade,
-                theme=theme,
                 max_slides=max_slides
             )
             
-            # Generate content using Gemini
-            response = self.model.generate_content(
+            # Get LLM
+            llm = self._get_llm()
+            
+            # Generate with deterministic settings
+            response = llm(
                 prompt,
-                generation_config=self.generation_config
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+                top_p=self.top_p,
+                repeat_penalty=self.repeat_penalty,
+                stop=["```", "\n\n\n"]
             )
             
-            if not response.text:
-                raise Exception("Empty response from Gemini API")
+            response_text = response['choices'][0]['text'].strip()
+            
+            if not response_text:
+                raise Exception("Empty response from LLM")
             
             # Parse the JSON response
-            slides_data = self._parse_gemini_response(response.text)
+            slides_data = self._parse_llm_response(response_text)
             
             # Validate and create slide objects
-            slides = self._process_enhanced_slides(slides_data)
+            slides = self._process_slides(slides_data)
             
             if not slides:
                 raise Exception("No valid slides generated from transcript")
@@ -113,12 +218,13 @@ class ContentGenerationService:
             metadata = {
                 'original_transcript_length': len(transcript),
                 'slides_generated': len(slides),
-                'generation_model': 'gemini-2.5-flash',
+                'generation_model': 'qwen2.5-7b-instruct-q4_k_m',
                 'subject': subject,
                 'grade': grade,
                 'theme': theme,
-                'prompt_tokens_estimate': len(prompt.split()),
-                'response_tokens_estimate': len(response.text.split()) if response.text else 0
+                'teacher_faithful': True,  # Flag indicating content policy
+                'prompt_tokens': response.get('usage', {}).get('prompt_tokens', 0),
+                'completion_tokens': response.get('usage', {}).get('completion_tokens', 0)
             }
             
             logger.info(f"Successfully generated {len(slides)} slides")
@@ -132,138 +238,65 @@ class ContentGenerationService:
             logger.error(f"Slide generation failed: {str(e)}")
             raise Exception(f"Slide generation failed: {str(e)}")
     
-    def _create_enhanced_prompt(
+    def _create_teacher_faithful_prompt(
         self,
         transcript: str,
         notes: str,
         syllabus: str,
         subject: str,
         grade: str,
-        theme: str,
         max_slides: int
     ) -> str:
-        """Create an enhanced structured prompt for K-12 slide generation."""
+        """Create a teacher-faithful prompt that prevents external knowledge injection."""
         
-        prompt = f"""You are an expert instructional designer for K-12 content.
-Generate clean, minimal, academic-quality slides with structured formatting elements:
-- Bold text using **double asterisks**
-- Subheaders using "### "
-- Section separators using "---"
-- Two-column groups using "columns": {{"left": [...], "right": [...]}}
-- Key terms highlighted using **ALL CAPS**
-- Short definitions labeled clearly
-- Optional visual indicators such as:
-  - Horizontal dividers: "---"
-  - Emphasis blocks: "**Important:**"
-  - Title hierarchy: H1 > H2 > H3
+        prompt = f"""{self.SYSTEM_PROMPT}
 
-STRICT RULES:
-1. Never add content beyond the transcript, notes, or syllabus provided.
-2. If the teacher spoke very little, output a SHORT micro-deck (2-4 slides).
-3. You may add supporting detail ONLY from notes or syllabus if provided.
-4. Maintain teacher intent - do not change the meaning.
-5. Slides must remain concise, readable, and educational.
-6. Maximum 30 words per slide (excluding headings).
-7. Generate a maximum of {max_slides} slides.
-8. Output must follow the JSON schema precisely (no extra text).
-9. For each slide, suggest 2-3 image_keywords that could be used to find relevant images.
+TASK: Convert the following teacher transcript into structured slides.
+Use ONLY the content from the transcript. Do not add any information.
 
-SLIDE TYPES ALLOWED:
-- title-slide: Opening slide with main title and subtitle
-- content-slide: Standard slide with bullet points
-- split-slide: Two columns for comparisons or term/definition pairs
-- definition-slide: For key vocabulary
-- example-slide: For worked examples or illustrations
-- summary-slide: For key takeaways
-- quiz-slide: For comprehension check questions
-
-INPUTS:
+TRANSCRIPT (This is the ground truth - use only this):
 ---
-Teacher Transcript:
 {transcript}
-
-Teacher Notes:
-{notes if notes else "(No notes provided)"}
-
-Syllabus Outline:
-{syllabus if syllabus else "(No syllabus provided)"}
-
-Subject: {subject}
-Grade Level: {grade}
-Theme Color: {theme}
 ---
 
-OUTPUT FORMAT (MANDATORY JSON ONLY):
+{f"TEACHER NOTES (for organizational context only): {notes}" if notes else ""}
+{f"SYLLABUS (for structure reference only): {syllabus}" if syllabus else ""}
 
+REQUIREMENTS:
+- Subject: {subject}
+- Grade Level: {grade}
+- Maximum slides: {max_slides}
+- Generate fewer slides if transcript content is limited
+
+OUTPUT JSON SCHEMA:
 {{
-  "title": "<Inferred title from content>",
-  "subject": "{subject}",
-  "grade": "{grade}",
-  "theme": "{theme}",
   "slides": [
     {{
-      "type": "title-slide",
-      "heading": "<Main Title>",
-      "subheading": "<Short Subtitle>",
-      "content": ["<Title>", "<Subtitle>"],
-      "image_keywords": ["keyword1", "keyword2"]
-    }},
-    {{
-      "type": "content-slide",
-      "heading": "<Heading>",
-      "content": ["**Key point 1**", "Supporting detail", "Another point"],
-      "sections": [
-        {{
-          "title": "### Concept Overview",
-          "bullets": ["**Key idea**...", "Important detail..."]
-        }}
-      ],
-      "image_keywords": ["keyword1", "keyword2"]
-    }},
-    {{
-      "type": "split-slide",
-      "heading": "<Comparison or Terms>",
-      "content": ["Left column summary", "Right column summary"],
-      "columns": {{
-        "left": ["**Term A**", "Definition...", "---", "**Term B**", "Definition..."],
-        "right": ["Diagram explanation...", "Short notes..."]
-      }},
-      "image_keywords": ["keyword1", "keyword2"]
-    }},
-    {{
-      "type": "summary-slide",
-      "heading": "Summary",
-      "content": ["Key takeaway 1", "Key takeaway 2"],
-      "image_keywords": ["keyword1", "keyword2"]
-    }},
-    {{
-      "type": "quiz-slide",
-      "heading": "Check Your Understanding",
-      "content": ["Q1?", "Q2?"],
-      "questions": ["Q1?", "Q2?"]
+      "title": "Slide title derived from transcript content",
+      "content": ["Bullet point 1 from transcript", "Bullet point 2 from transcript"],
+      "slide_type": "content-slide"
     }}
   ]
 }}
 
-TASK:
-Analyze the transcript and produce a clean, well-structured slide deck.
-Use **bold**, subheaders, and dividers where it improves clarity.
-If content is minimal, generate a minimal slide deck.
-Focus ONLY on what the teacher actually said - do not add external information.
-Suggest relevant image_keywords for visual enhancement.
+SLIDE TYPES ALLOWED:
+- title-slide: Opening slide
+- content-slide: Standard bullet points
+- summary-slide: Key takeaways from transcript
 
-Do NOT include any explanations - output ONLY valid JSON."""
+Remember: ONLY use content from the transcript. No external knowledge.
+
+OUTPUT (JSON only, no markdown):"""
 
         return prompt
     
-    def _process_enhanced_slides(self, slides_data: Dict) -> List[SlideContent]:
-        """Process the enhanced slide format into SlideContent objects."""
+    def _process_slides(self, slides_data: Dict) -> List[SlideContent]:
+        """Process the slide data into SlideContent objects."""
         slides = []
         raw_slides = slides_data.get('slides', [])
         
         for i, slide_data in enumerate(raw_slides):
             try:
-                # Extract content - handle both old and new formats
                 content = slide_data.get('content', [])
                 if not content and slide_data.get('heading'):
                     content = [slide_data.get('heading', '')]
@@ -285,7 +318,7 @@ Do NOT include any explanations - output ONLY valid JSON."""
                 slide = SlideContent(
                     title=slide_data.get('heading', slide_data.get('title', f'Slide {i+1}')),
                     content=content if content else ['Content'],
-                    slide_type=slide_data.get('type', 'content-slide'),
+                    slide_type=slide_data.get('type', slide_data.get('slide_type', 'content-slide')),
                     columns=slide_data.get('columns'),
                     sections=sections,
                     questions=questions,
@@ -298,12 +331,12 @@ Do NOT include any explanations - output ONLY valid JSON."""
         
         return slides
     
-    def _parse_gemini_response(self, response_text: str) -> Dict:
+    def _parse_llm_response(self, response_text: str) -> Dict:
         """
-        Parse the JSON response from Gemini API.
+        Parse the JSON response from LLM.
         
         Args:
-            response_text: Raw response text from Gemini
+            response_text: Raw response text from LLM
             
         Returns:
             Parsed JSON data
@@ -330,7 +363,6 @@ Do NOT include any explanations - output ONLY valid JSON."""
             
             # Validate basic structure
             if 'slides' not in parsed_data:
-                # Try to wrap single slide in array
                 if isinstance(parsed_data, list):
                     parsed_data = {'slides': parsed_data}
                 else:
@@ -339,7 +371,7 @@ Do NOT include any explanations - output ONLY valid JSON."""
             return parsed_data
             
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Gemini response as JSON: {e}")
+            logger.error(f"Failed to parse LLM response as JSON: {e}")
             logger.debug(f"Response text: {response_text[:500]}...")
             
             # Try to extract JSON from response
@@ -366,11 +398,9 @@ Do NOT include any explanations - output ONLY valid JSON."""
         if not transcript or not isinstance(transcript, str):
             return False
         
-        # Check minimum length
         if len(transcript.strip()) < 50:
             return False
         
-        # Check for reasonable word count
         word_count = len(transcript.split())
         if word_count < 10:
             return False

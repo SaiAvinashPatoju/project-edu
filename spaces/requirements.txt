@@ -1,0 +1,27 @@
+# ================================================
+# Project EDU - Edge AI Requirements
+# ================================================
+# Web Framework
+fastapi
+uvicorn
+python-multipart
+
+# ASR: Moonshine (UsefulSensors)
+useful-moonshine @ git+https://github.com/usefulsensors/moonshine.git
+soundfile
+numpy
+onnxruntime
+
+# TensorFlow backend for Moonshine (pinned for compatibility)
+tensorflow<2.19
+keras==3.6.0
+
+# Model Downloads
+huggingface-hub
+
+# Utilities
+pydantic
+
+# LLM: llama-cpp-python
+# Linux builds automatically, Windows needs: pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+llama-cpp-python

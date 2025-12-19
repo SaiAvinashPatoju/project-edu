@@ -1,0 +1,16 @@
+# Model files (downloaded at runtime to /data)
+*.gguf
+*.bin
+*.onnx
+
+# HF cache
+.cache/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Temp
+*.tmp
+*.log

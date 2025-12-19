@@ -43,6 +43,9 @@ temp_uploads/
 *.tmp
 *.temp
 
+# AI Models (download separately - too large for git)
+models/
+
 # Testing
 .pytest_cache/
 .coverage

@@ -25,17 +25,18 @@ if not exist "frontend\node_modules" (
 
 REM Environment variables for backend
 set SECRET_KEY=super_secret_jwt_key_for_development_change_in_production_12345
-set GOOGLE_API_KEY=AIzaSyCIk5gH-tDX2ygGeNlCAykpVGDtzrngCRY
 set DATABASE_URL=sqlite:///./lectures.db
 set ACCESS_TOKEN_EXPIRE_MINUTES=30
-set WHISPER_MODEL_SIZE=base
 set TEMP_FILE_DIR=./temp_uploads
 set MAX_FILE_SIZE_MB=500
 set MAX_DURATION_MINUTES=120
 set BACKGROUND_TASK_TIMEOUT=3600
 set CLEANUP_INTERVAL_HOURS=24
-REM Enable mock transcription if faster-whisper is not installed
-set USE_MOCK_TRANSCRIPTION=true
+
+REM Local AI Models (Offline-first)
+set MOONSHINE_MODEL=UsefulSensors/moonshine-base
+set QWEN_MODEL_PATH=../models/qwen2.5-7b.gguf
+set USE_MOCK_TRANSCRIPTION=false
 
 echo [1/2] Starting Backend Server...
 echo      URL: http://localhost:8000
