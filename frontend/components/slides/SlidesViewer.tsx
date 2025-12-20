@@ -126,7 +126,7 @@ function SlideContent({ slide }: { slide: any }) {
           {title}
         </h2>
         <blockquote className="text-2xl md:text-3xl text-slate-600 italic max-w-2xl leading-relaxed">
-          "{quoteText}"
+          &quot;{quoteText}&quot;
         </blockquote>
       </div>
     )
@@ -355,7 +355,7 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
         <div className="relative z-10 min-h-screen flex items-center justify-center px-4">
           <div className="bg-white/95 backdrop-blur-xl border border-slate-200 rounded-3xl shadow-2xl p-12 text-center max-w-md">
             <h3 className="text-xl font-bold text-slate-900 mb-2">No Slides Found</h3>
-            <p className="text-slate-600 mb-6">This session doesn't have any slides yet.</p>
+            <p className="text-slate-600 mb-6">This session doesn&apos;t have any slides yet.</p>
             <button
               onClick={() => router.push('/dashboard')}
               className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl font-medium shadow-lg shadow-teal-500/30"

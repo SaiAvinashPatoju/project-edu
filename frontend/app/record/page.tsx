@@ -102,7 +102,7 @@ export default function RecordPage() {
                 </Link>
                 <div>
                   <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Record New Lecture</h1>
-                  <p className="text-slate-500">Record and we'll generate slides automatically</p>
+                  <p className="text-slate-500">Record and we&apos;ll generate slides automatically</p>
                 </div>
               </div>
 
@@ -178,7 +178,7 @@ export default function RecordPage() {
                         maxLength={100}
                       />
                       <p className="mt-2 text-xs text-slate-500">
-                        If not provided, we'll generate a title automatically
+                        If not provided, we&apos;ll generate a title automatically
                       </p>
                     </div>
 
@@ -188,8 +188,8 @@ export default function RecordPage() {
                         Recording Status
                       </label>
                       <div className={`p-4 rounded-xl flex items-center gap-3 ${recordedBlob
-                          ? 'bg-green-50 border-2 border-green-200'
-                          : 'bg-slate-50 border-2 border-slate-200'
+                        ? 'bg-green-50 border-2 border-green-200'
+                        : 'bg-slate-50 border-2 border-slate-200'
                         }`}>
                         {recordedBlob ? (
                           <>
@@ -198,7 +198,7 @@ export default function RecordPage() {
                             </div>
                             <div>
                               <span className="text-green-800 font-bold">Recording ready!</span>
-                              <p className="text-sm text-green-600">Click "Process Lecture" to continue</p>
+                              <p className="text-sm text-green-600">Click &quot;Process Lecture&quot; to continue</p>
                             </div>
                           </>
                         ) : (
