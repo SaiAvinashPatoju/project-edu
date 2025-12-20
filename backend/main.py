@@ -345,6 +345,32 @@ async def get_user_sessions(
     
     return sessions
 
+@app.delete("/lectures/{session_id}")
+async def delete_lecture_session(
+    session_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a lecture session and all associated slides"""
+    
+    # Verify session belongs to user
+    session = db.query(LectureSession).filter(
+        LectureSession.id == session_id,
+        LectureSession.owner_id == current_user.id
+    ).first()
+    
+    if not session:
+        raise HTTPException(status_code=404, detail="Lecture session not found")
+    
+    # Delete associated export jobs first
+    db.query(ExportJob).filter(ExportJob.session_id == session_id).delete()
+    
+    # Delete the session (slides cascade delete automatically)
+    db.delete(session)
+    db.commit()
+    
+    return {"message": "Lecture session deleted"}
+
 @app.get("/lectures/{session_id}", response_model=SessionWithSlidesResponse)
 async def get_session_with_slides(
     session_id: int,

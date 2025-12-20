@@ -91,7 +91,7 @@ class ApiClient {
       const response = await fetch(`${API_BASE_URL}/lectures/sessions`, {
         headers: this.getAuthHeaders()
       })
-      
+
       return this.handleResponse<LectureSession[]>(response, 'fetchSessions')
     } catch (error) {
       logError(error, 'fetchSessions')
@@ -104,7 +104,7 @@ class ApiClient {
       const response = await fetch(`${API_BASE_URL}/lectures/${sessionId}`, {
         headers: this.getAuthHeaders()
       })
-      
+
       return this.handleResponse<SessionWithSlides>(response, 'fetchSessionWithSlides')
     } catch (error) {
       logError(error, 'fetchSessionWithSlides')
@@ -119,7 +119,7 @@ class ApiClient {
         headers: this.getAuthHeaders(),
         body: JSON.stringify(update)
       })
-      
+
       return this.handleResponse<Slide>(response, 'updateSlide')
     } catch (error) {
       logError(error, 'updateSlide')
@@ -132,10 +132,24 @@ class ApiClient {
       const response = await fetch(`${API_BASE_URL}/lectures/${sessionId}/status`, {
         headers: this.getAuthHeaders()
       })
-      
+
       return this.handleResponse<{ status: string; progress?: number; error?: string }>(response, 'getProcessingStatus')
     } catch (error) {
       logError(error, 'getProcessingStatus')
+      throw error
+    }
+  }
+
+  async deleteLectureSession(sessionId: number): Promise<{ message: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/lectures/${sessionId}`, {
+        method: 'DELETE',
+        headers: this.getAuthHeaders()
+      })
+
+      return this.handleResponse<{ message: string }>(response, 'deleteLectureSession')
+    } catch (error) {
+      logError(error, 'deleteLectureSession')
       throw error
     }
   }
@@ -147,7 +161,7 @@ class ApiClient {
         headers: this.getAuthHeaders(),
         body: JSON.stringify({ format })
       })
-      
+
       return this.handleResponse<ExportStartResponse>(response, 'startExport')
     } catch (error) {
       logError(error, 'startExport')
@@ -160,7 +174,7 @@ class ApiClient {
       const response = await fetch(`${API_BASE_URL}/slides/export/${exportId}/status`, {
         headers: this.getAuthHeaders()
       })
-      
+
       return this.handleResponse<ExportStatusResponse>(response, 'getExportStatus')
     } catch (error) {
       logError(error, 'getExportStatus')
@@ -173,7 +187,7 @@ class ApiClient {
       const response = await fetch(`${API_BASE_URL}/exports/download/${exportId}`, {
         headers: this.getAuthHeaders()
       })
-      
+
       if (!response.ok) {
         const error = {
           response: {
@@ -186,7 +200,7 @@ class ApiClient {
         logError(parsedError, 'downloadExport')
         throw parsedError
       }
-      
+
       return response.blob()
     } catch (error) {
       logError(error, 'downloadExport')

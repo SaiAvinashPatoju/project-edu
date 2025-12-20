@@ -1,11 +1,226 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { apiClient, SessionWithSlides } from '@/lib/api-client'
+import { ChevronLeft, ChevronRight, Download, Home, Quote, AlertCircle, Sparkles, BookOpen, List, CheckCircle } from 'lucide-react'
 
 interface SlidesViewerProps {
   sessionId: number
+}
+
+// Parse markdown-style formatting in text
+function parseFormattedText(text: string): ReactNode[] {
+  const parts: ReactNode[] = []
+  let remaining = text
+  let key = 0
+
+  // Pattern for **bold** text
+  const boldPattern = /\*\*([^*]+)\*\*/g
+  let lastIndex = 0
+  let match
+
+  while ((match = boldPattern.exec(text)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>)
+    }
+    // Add the bold text with teal color
+    parts.push(
+      <span key={key++} className="font-bold text-teal-700">
+        {match[1]}
+      </span>
+    )
+    lastIndex = match.index + match[0].length
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(<span key={key++}>{text.slice(lastIndex)}</span>)
+  }
+
+  return parts.length > 0 ? parts : [<span key={0}>{text}</span>]
+}
+
+// Parse slide content which may be JSON string, plain string, or array
+function parseSlideContent(content: any): string[] {
+  if (!content) return []
+
+  // If already an array, return it
+  if (Array.isArray(content)) {
+    return content.map(item => String(item))
+  }
+
+  // If it's a string, try to parse as JSON first
+  if (typeof content === 'string') {
+    const trimmed = content.trim()
+
+    // Check if it looks like a JSON array
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) {
+          return parsed.map(item => String(item))
+        }
+      } catch (e) {
+        // Not valid JSON, fall through
+      }
+    }
+
+    // Split by newlines if it contains them
+    if (trimmed.includes('\n')) {
+      return trimmed.split('\n').filter(line => line.trim())
+    }
+
+    // Return as single item array
+    return trimmed ? [trimmed] : []
+  }
+
+  // Fallback
+  return [String(content)]
+}
+
+// Render content based on slide type
+function SlideContent({ slide }: { slide: any }) {
+  const slideType = slide.slide_type || slide.type || 'list'
+  const rawContent = slide.content
+  const title = slide.title
+
+  // Parse the content
+  const content = parseSlideContent(rawContent)
+
+  // Title Slide
+  if (slideType === 'title') {
+    // For title slides, content is the subtitle (single string)
+    const subtitle = typeof rawContent === 'string' ? rawContent : (content[0] || '')
+    return (
+      <div className="flex flex-col items-center justify-center text-center h-full py-12">
+        <div className="mb-6">
+          <div className="w-20 h-20 bg-gradient-to-br from-teal-500 to-teal-600 rounded-3xl flex items-center justify-center mx-auto shadow-xl shadow-teal-500/30">
+            <BookOpen className="w-10 h-10 text-white" />
+          </div>
+        </div>
+        <h1 className="text-4xl md:text-5xl font-bold text-teal-900 mb-4 leading-tight">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="text-xl md:text-2xl text-rose-500 font-medium">
+            {subtitle}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // Quote Slide
+  if (slideType === 'quote') {
+    const quoteText = typeof rawContent === 'string' ? rawContent : (content[0] || '')
+    return (
+      <div className="flex flex-col items-center justify-center text-center h-full py-12 relative">
+        {/* Big quote icon in background */}
+        <div className="absolute top-8 left-8 opacity-10">
+          <Quote className="w-32 h-32 text-teal-900" />
+        </div>
+        <h2 className="text-xl font-bold text-teal-600 mb-8 uppercase tracking-wider">
+          {title}
+        </h2>
+        <blockquote className="text-2xl md:text-3xl text-slate-600 italic max-w-2xl leading-relaxed">
+          "{quoteText}"
+        </blockquote>
+      </div>
+    )
+  }
+
+  // Summary Slide
+  if (slideType === 'summary') {
+    return (
+      <div className="h-full py-8">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center shadow-lg shadow-green-500/30">
+            <CheckCircle className="w-6 h-6 text-white" />
+          </div>
+          <h1 className="text-3xl md:text-4xl font-bold text-teal-900">
+            {title}
+          </h1>
+        </div>
+        <div className="space-y-4">
+          {content.map((item: string, index: number) => (
+            <div key={index} className="flex items-start gap-4 p-4 bg-green-50 border-l-4 border-green-500 rounded-r-xl">
+              <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
+                {index + 1}
+              </div>
+              <p className="text-lg text-slate-700 pt-1">
+                {parseFormattedText(item)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Concept Slide
+  if (slideType === 'concept') {
+    return (
+      <div className="h-full py-8">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-12 h-12 bg-gradient-to-br from-rose-500 to-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-rose-500/30">
+            <Sparkles className="w-6 h-6 text-white" />
+          </div>
+          <h1 className="text-3xl md:text-4xl font-bold text-teal-900">
+            {title}
+          </h1>
+        </div>
+        <div className="space-y-5">
+          {content.map((item: string, index: number) => (
+            <div key={index} className="flex items-start gap-4">
+              <div className="w-3 h-3 bg-gradient-to-br from-rose-400 to-rose-500 rounded-full flex-shrink-0 mt-2.5 shadow-lg shadow-rose-400/50"></div>
+              <p className="text-lg md:text-xl text-slate-700">
+                {parseFormattedText(item)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // List Slide (default)
+  const bulletColors = [
+    { bg: 'bg-teal-500', shadow: 'shadow-teal-500/50' },
+    { bg: 'bg-rose-500', shadow: 'shadow-rose-500/50' },
+    { bg: 'bg-orange-500', shadow: 'shadow-orange-500/50' },
+    { bg: 'bg-teal-500', shadow: 'shadow-teal-500/50' },
+    { bg: 'bg-rose-500', shadow: 'shadow-rose-500/50' },
+  ]
+
+  return (
+    <div className="h-full py-8">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-12 h-12 bg-gradient-to-br from-teal-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg shadow-teal-500/30">
+          <List className="w-6 h-6 text-white" />
+        </div>
+        <h1 className="text-3xl md:text-4xl font-bold text-teal-900">
+          {title}
+        </h1>
+      </div>
+      <div className="space-y-5">
+        {content.map((item: string, index: number) => {
+          const colorConfig = bulletColors[index % bulletColors.length]
+          const cleanItem = item.replace(/^[•\-\*]\s*/, '')
+          return (
+            <div key={index} className="flex items-start gap-4">
+              <div className={`w-3 h-3 ${colorConfig.bg} rounded-full flex-shrink-0 mt-2.5 shadow-lg ${colorConfig.shadow}`}></div>
+              <p className="text-lg md:text-xl text-slate-700">
+                {parseFormattedText(cleanItem)}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
@@ -13,9 +228,11 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentSlide, setCurrentSlide] = useState(0)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+  const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const router = useRouter()
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadSessionData()
   }, [sessionId])
@@ -24,9 +241,7 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
     try {
       setLoading(true)
       setError(null)
-      console.log('Loading session data for ID:', sessionId)
       const data = await apiClient.fetchSessionWithSlides(sessionId)
-      console.log('Session data loaded:', data)
       setSessionData(data)
     } catch (err: any) {
       console.error('Error loading session:', err)
@@ -36,12 +251,59 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
     }
   }
 
+  const handleExport = async (format: 'pdf' | 'pptx') => {
+    setExportLoading(true)
+    setShowExportMenu(false)
+    setExportMessage(null)
+
+    try {
+      const result = await apiClient.startExport(sessionId, format)
+      setExportMessage({
+        type: 'success',
+        text: `${format.toUpperCase()} export started! Check back shortly.`
+      })
+
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => setExportMessage(null), 5000)
+    } catch (err: any) {
+      console.error('Export error:', err)
+      setExportMessage({
+        type: 'error',
+        text: err.message || 'Failed to start export'
+      })
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!sessionData) return
+      if (e.key === 'ArrowLeft') {
+        setCurrentSlide(prev => Math.max(0, prev - 1))
+      } else if (e.key === 'ArrowRight') {
+        setCurrentSlide(prev => Math.min(sessionData.slides.length - 1, prev + 1))
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [sessionData])
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading slides...</p>
+      <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-stone-50 to-slate-100">
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -left-20 w-[600px] h-[600px] bg-teal-600/25 rounded-full blur-3xl"></div>
+          <div className="absolute top-1/3 -right-40 w-[700px] h-[700px] bg-teal-700/20 rounded-full blur-3xl"></div>
+          <div className="absolute top-20 right-1/4 w-[400px] h-[400px] bg-rose-500/25 rounded-full blur-3xl"></div>
+        </div>
+
+        <div className="relative z-10 min-h-screen flex items-center justify-center">
+          <div className="bg-white/95 backdrop-blur-xl border border-slate-200 rounded-3xl shadow-2xl p-12 text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-4 border-teal-600 border-t-transparent mx-auto"></div>
+            <p className="mt-6 text-slate-700 font-medium text-lg">Loading slides...</p>
+          </div>
         </div>
       </div>
     )
@@ -49,48 +311,33 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-red-800 mb-2">Error Loading Slides</h3>
-            <p className="text-red-700 mb-4">{error}</p>
-            <div className="space-x-3">
+      <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-stone-50 to-slate-100">
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -left-20 w-[600px] h-[600px] bg-teal-600/25 rounded-full blur-3xl"></div>
+          <div className="absolute top-1/3 -right-40 w-[700px] h-[700px] bg-teal-700/20 rounded-full blur-3xl"></div>
+        </div>
+
+        <div className="relative z-10 min-h-screen flex items-center justify-center px-4">
+          <div className="bg-white/95 backdrop-blur-xl border border-slate-200 rounded-3xl shadow-2xl p-12 text-center max-w-md">
+            <div className="w-16 h-16 bg-gradient-to-br from-rose-500 to-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-rose-500/30">
+              <AlertCircle className="w-8 h-8 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 mb-2">Error Loading Slides</h3>
+            <p className="text-slate-600 mb-6">{error}</p>
+            <div className="flex gap-3 justify-center">
               <button
                 onClick={loadSessionData}
-                className="bg-red-100 hover:bg-red-200 text-red-800 px-4 py-2 rounded text-sm"
+                className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl font-medium shadow-lg shadow-teal-500/30"
               >
                 Try Again
               </button>
               <button
                 onClick={() => router.push('/dashboard')}
-                className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded text-sm"
+                className="px-6 py-3 bg-slate-100 border border-slate-200 text-slate-700 rounded-xl font-medium"
               >
-                Back to Dashboard
+                Back
               </button>
             </div>
-          </div>
-
-          {/* Debug info */}
-          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-left">
-            <h4 className="font-medium text-yellow-800 mb-2">Debug Info:</h4>
-            <p className="text-sm text-yellow-700">Session ID: {sessionId}</p>
-            <p className="text-sm text-yellow-700">Error: {error}</p>
-            <button
-              onClick={() => {
-                console.log('Testing direct API call...')
-                fetch(`http://localhost:8000/lectures/${sessionId}`, {
-                  headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('auth-storage') ? JSON.parse(localStorage.getItem('auth-storage')!).state.token : 'no-token'}`
-                  }
-                })
-                  .then(res => res.json())
-                  .then(data => console.log('Direct API response:', data))
-                  .catch(err => console.error('Direct API error:', err))
-              }}
-              className="mt-2 bg-yellow-600 text-white px-3 py-1 rounded text-sm hover:bg-yellow-700"
-            >
-              Test Direct API Call
-            </button>
           </div>
         </div>
       </div>
@@ -99,126 +346,202 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
 
   if (!sessionData || !sessionData.slides || sessionData.slides.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No Slides Found</h3>
-          <p className="text-gray-600 mb-4">This session doesn&apos;t have any slides yet.</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
-          >
-            Back to Dashboard
-          </button>
+      <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-stone-50 to-slate-100">
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -left-20 w-[600px] h-[600px] bg-teal-600/25 rounded-full blur-3xl"></div>
+          <div className="absolute top-1/3 -right-40 w-[700px] h-[700px] bg-teal-700/20 rounded-full blur-3xl"></div>
+        </div>
+
+        <div className="relative z-10 min-h-screen flex items-center justify-center px-4">
+          <div className="bg-white/95 backdrop-blur-xl border border-slate-200 rounded-3xl shadow-2xl p-12 text-center max-w-md">
+            <h3 className="text-xl font-bold text-slate-900 mb-2">No Slides Found</h3>
+            <p className="text-slate-600 mb-6">This session doesn't have any slides yet.</p>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl font-medium shadow-lg shadow-teal-500/30"
+            >
+              Back to Dashboard
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
   const slides = sessionData.slides.sort((a, b) => a.slide_number - b.slide_number)
+  const currentSlideData = slides[currentSlide]
+
+  // Determine slide type for visual indicators
+  const getSlideTypeIcon = (slide: any) => {
+    const type = slide.slide_type || slide.type || 'list'
+    switch (type) {
+      case 'title': return 'bg-teal-500'
+      case 'concept': return 'bg-rose-500'
+      case 'quote': return 'bg-orange-500'
+      case 'summary': return 'bg-green-500'
+      default: return 'bg-teal-500'
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{sessionData.session.title}</h1>
-              <p className="text-sm text-gray-600">
-                {slides.length} slides • Created {new Date(sessionData.session.created_at).toLocaleDateString()}
-              </p>
-            </div>
-            <div className="flex space-x-3">
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="bg-gray-100 text-gray-700 px-4 py-2 rounded hover:bg-gray-200"
-              >
-                Back to Dashboard
-              </button>
-              <button
-                onClick={() => {
-                  // TODO: Implement export functionality
-                  alert('Export functionality coming soon!')
-                }}
-                className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
-              >
-                Export Slides
-              </button>
-            </div>
-          </div>
-        </div>
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-stone-50 to-slate-100">
+      {/* === RICH BACKGROUND === */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -left-20 w-[600px] h-[600px] bg-teal-600/25 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/3 -right-40 w-[700px] h-[700px] bg-teal-700/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-40 left-1/3 w-[500px] h-[500px] bg-teal-600/20 rounded-full blur-3xl"></div>
+        <div className="absolute top-20 right-1/4 w-[400px] h-[400px] bg-rose-500/25 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-20 right-20 w-[450px] h-[450px] bg-rose-400/20 rounded-full blur-3xl"></div>
       </div>
 
-      {/* Slides Navigation */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-lg font-medium text-gray-900">
-            Slide {currentSlide + 1} of {slides.length}
-          </h2>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setCurrentSlide(Math.max(0, currentSlide - 1))}
-              disabled={currentSlide === 0}
-              className="bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              Previous
-            </button>
-            <button
-              onClick={() => setCurrentSlide(Math.min(slides.length - 1, currentSlide + 1))}
-              disabled={currentSlide === slides.length - 1}
-              className="bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
-            >
-              Next
-            </button>
-          </div>
-        </div>
+      {/* === MAIN CONTENT === */}
+      <div className="relative z-10 min-h-screen flex flex-col">
 
-        {/* Current Slide */}
-        <div className="bg-white rounded-lg shadow-lg p-8 min-h-96">
-          <h3 className="text-2xl font-bold text-gray-900 mb-6">
-            {slides[currentSlide]?.title}
-          </h3>
-          <div className="prose max-w-none">
-            {slides[currentSlide]?.content.split('\n').map((line, index) => (
-              <p key={index} className="text-gray-700 mb-3">
-                {line.startsWith('•') || line.startsWith('-') ? (
-                  <span className="flex items-start">
-                    <span className="text-indigo-600 mr-2">•</span>
-                    <span>{line.replace(/^[•-]\s*/, '')}</span>
-                  </span>
+        {/* === FLOATING HEADER === */}
+        <div className="flex justify-center pt-6 px-4">
+          <div className="bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl px-6 py-3 shadow-xl flex items-center gap-4">
+            {/* Back Button */}
+            <Link
+              href="/dashboard"
+              className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              <Home className="w-5 h-5 text-slate-600" />
+            </Link>
+
+            {/* Lecture Title */}
+            <span className="text-slate-900 font-semibold">
+              {sessionData.session.title || `Lecture ${sessionId}`}
+            </span>
+
+            <div className="w-px h-6 bg-slate-200"></div>
+
+            {/* Slide Counter */}
+            <span className="text-slate-500 text-sm font-medium">
+              {currentSlide + 1} / {slides.length}
+            </span>
+
+            <div className="w-px h-6 bg-slate-200"></div>
+
+            {/* Export Button */}
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                disabled={exportLoading}
+                className="flex items-center gap-2 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white px-5 py-2 rounded-xl font-medium shadow-lg shadow-rose-500/30 transition-all disabled:opacity-50"
+              >
+                {exportLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Exporting...
+                  </>
                 ) : (
-                  line
+                  <>
+                    <Download className="w-4 h-4" />
+                    Export
+                  </>
                 )}
-              </p>
-            ))}
+              </button>
+
+              {showExportMenu && !exportLoading && (
+                <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-50">
+                  <button
+                    onClick={() => handleExport('pdf')}
+                    className="block w-full px-6 py-3 text-left text-slate-700 hover:bg-slate-50 font-medium"
+                  >
+                    📄 Export as PDF
+                  </button>
+                  <button
+                    onClick={() => handleExport('pptx')}
+                    className="block w-full px-6 py-3 text-left text-slate-700 hover:bg-slate-50 font-medium"
+                  >
+                    📊 Export as PPTX
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Slide Thumbnails */}
-        <div className="mt-8">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">All Slides</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {/* Toast Notification */}
+        {exportMessage && (
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-4 fade-in duration-300">
+            <div className={`px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 ${exportMessage.type === 'success'
+              ? 'bg-green-500 text-white'
+              : 'bg-rose-500 text-white'
+              }`}>
+              {exportMessage.type === 'success' ? (
+                <CheckCircle className="w-5 h-5" />
+              ) : (
+                <AlertCircle className="w-5 h-5" />
+              )}
+              <span className="font-medium">{exportMessage.text}</span>
+              <button
+                onClick={() => setExportMessage(null)}
+                className="ml-2 text-white/80 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* === MAIN STAGE === */}
+        <div className="flex-1 flex items-center justify-center px-4 py-8 relative">
+
+          {/* Navigation Arrow - Left */}
+          <button
+            onClick={() => setCurrentSlide(Math.max(0, currentSlide - 1))}
+            disabled={currentSlide === 0}
+            className="absolute left-4 md:left-12 w-14 h-14 md:w-16 md:h-16 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl flex items-center justify-center shadow-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+          >
+            <ChevronLeft className="w-6 h-6 md:w-8 md:h-8 text-slate-600" />
+          </button>
+
+          {/* Main Slide Card */}
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl p-8 md:p-12 max-w-4xl w-full mx-16 md:mx-24 min-h-[450px] md:min-h-[520px] flex flex-col">
+            <SlideContent slide={currentSlideData} />
+          </div>
+
+          {/* Navigation Arrow - Right */}
+          <button
+            onClick={() => setCurrentSlide(Math.min(slides.length - 1, currentSlide + 1))}
+            disabled={currentSlide === slides.length - 1}
+            className="absolute right-4 md:right-12 w-14 h-14 md:w-16 md:h-16 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl flex items-center justify-center shadow-xl disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 transition-all"
+          >
+            <ChevronRight className="w-6 h-6 md:w-8 md:h-8 text-slate-600" />
+          </button>
+        </div>
+
+        {/* === THUMBNAIL DOCK === */}
+        <div className="flex justify-center pb-6 px-4">
+          <div className="bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl px-4 py-3 shadow-xl flex items-center gap-3 overflow-x-auto max-w-full">
             {slides.map((slide, index) => (
-              <div
+              <button
                 key={slide.id}
                 onClick={() => setCurrentSlide(index)}
-                className={`cursor-pointer border-2 rounded-lg p-3 transition-colors ${index === currentSlide
-                  ? 'border-indigo-500 bg-indigo-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                className={`flex-shrink-0 w-20 h-14 md:w-24 md:h-16 bg-white border-2 rounded-xl shadow-md transition-all duration-300 overflow-hidden ${index === currentSlide
+                  ? 'border-rose-400 ring-2 ring-rose-400/30 scale-105'
+                  : 'border-slate-200 opacity-70 hover:opacity-100'
                   }`}
               >
-                <div className="text-xs text-gray-500 mb-1">Slide {slide.slide_number}</div>
-                <div className="text-sm font-medium text-gray-900 truncate">
-                  {slide.title}
+                <div className="p-2 h-full flex flex-col">
+                  <div className={`w-full h-1.5 ${getSlideTypeIcon(slide)} rounded mb-1 opacity-80`}></div>
+                  <div className="w-3/4 h-1 bg-slate-200 rounded mb-0.5"></div>
+                  <div className="w-1/2 h-1 bg-slate-200 rounded"></div>
                 </div>
-                <div className="text-xs text-gray-600 mt-1 line-clamp-2">
-                  {slide.content.substring(0, 100)}...
-                </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
       </div>
+
+      {/* Click outside to close export menu */}
+      {showExportMenu && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setShowExportMenu(false)}
+        ></div>
+      )}
     </div>
   )
 }

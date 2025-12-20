@@ -39,7 +39,7 @@ export CLEANUP_INTERVAL_HOURS=24
 
 # Local AI Models (Offline-first)
 export MOONSHINE_MODEL="UsefulSensors/moonshine-base"
-export QWEN_MODEL_PATH="../models/qwen2.5-7b.gguf"
+export QWEN_MODEL_PATH="../models/qwen2.5-3b.gguf/qwen2.5-3b-instruct-q4_k_m.gguf"
 export USE_MOCK_TRANSCRIPTION="false"
 
 # Function to cleanup on exit

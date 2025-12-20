@@ -35,7 +35,7 @@ set CLEANUP_INTERVAL_HOURS=24
 
 REM Local AI Models (Offline-first)
 set MOONSHINE_MODEL=UsefulSensors/moonshine-base
-set QWEN_MODEL_PATH=../models/qwen2.5-7b.gguf
+set QWEN_MODEL_PATH=../models/qwen2.5-3b.gguf/qwen2.5-3b-instruct-q4_k_m.gguf
 set USE_MOCK_TRANSCRIPTION=false
 
 echo [1/2] Starting Backend Server...
