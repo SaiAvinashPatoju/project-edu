@@ -4,12 +4,13 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (git needed for pip install from GitHub)
+# Install system dependencies (git for pip, ffmpeg for audio transcription)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
     git \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching

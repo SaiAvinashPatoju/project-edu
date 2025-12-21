@@ -25,8 +25,18 @@ def get_db():
 
 def init_db():
     """Initialize database tables and migrate schema if needed"""
-    # checkfirst=True prevents errors when multiple workers start simultaneously
-    Base.metadata.create_all(bind=engine, checkfirst=True)
+    from sqlalchemy.exc import OperationalError
+    
+    try:
+        # checkfirst=True should prevent errors, but race conditions can still occur
+        # with multiple workers starting simultaneously
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+    except OperationalError as e:
+        # Handle race condition gracefully - if tables exist, that's fine
+        if "already exists" in str(e):
+            print(f"Tables already initialized by another worker (safe to ignore)")
+        else:
+            raise
     
     # Auto-migration using SQLAlchemy engine
     try:
