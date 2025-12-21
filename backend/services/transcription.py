@@ -202,15 +202,50 @@ class TranscriptionService:
             moonshine = self._get_moonshine()
             
             logger.info(f"Transcribing with Moonshine model: {self.model_name}")
-            result = moonshine.transcribe(audio_path, self.model_name)
             
-            # Result is a list of transcriptions (one per audio file)
-            full_text = result[0] if result else ""
-            
-            # Get estimated duration
+            # Get audio duration first
             import soundfile as sf
             data, sr = sf.read(audio_path)
             duration = len(data) / sr
+            
+            # Moonshine has a 64-second limit per call - chunk if needed
+            MAX_CHUNK_SECONDS = 60  # Use 60s chunks with some margin
+            
+            if duration <= MAX_CHUNK_SECONDS:
+                # Short audio - transcribe directly
+                result = moonshine.transcribe(audio_path, self.model_name)
+                full_text = result[0] if result else ""
+            else:
+                # Long audio - chunk and transcribe each segment
+                logger.info(f"Audio is {duration:.1f}s, chunking into {MAX_CHUNK_SECONDS}s segments")
+                
+                chunk_samples = int(MAX_CHUNK_SECONDS * sr)
+                transcripts = []
+                
+                for i in range(0, len(data), chunk_samples):
+                    chunk_data = data[i:i + chunk_samples]
+                    chunk_num = i // chunk_samples + 1
+                    
+                    # Skip very short final chunks (< 1 second)
+                    if len(chunk_data) < sr:
+                        continue
+                    
+                    # Save chunk to temp file
+                    chunk_path = tempfile.NamedTemporaryFile(suffix='.wav', delete=False).name
+                    try:
+                        sf.write(chunk_path, chunk_data, sr)
+                        
+                        logger.info(f"Transcribing chunk {chunk_num} ({len(chunk_data)/sr:.1f}s)")
+                        chunk_result = moonshine.transcribe(chunk_path, self.model_name)
+                        
+                        if chunk_result and chunk_result[0]:
+                            transcripts.append(chunk_result[0])
+                    finally:
+                        if os.path.exists(chunk_path):
+                            os.unlink(chunk_path)
+                
+                full_text = " ".join(transcripts)
+                logger.info(f"Assembled {len(transcripts)} chunks into transcript")
             
             # Create single segment (Moonshine doesn't provide word-level timestamps)
             segments = [

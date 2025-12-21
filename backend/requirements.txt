@@ -18,5 +18,8 @@ python-pptx==0.6.23
 useful-moonshine @ git+https://github.com/usefulsensors/moonshine.git
 soundfile>=0.12.1
 
-# Qwen 2.5 via llama-cpp-python
+# Qwen 2.5 / Gemma 2B via llama-cpp-python
 llama-cpp-python>=0.2.90
+
+# Google Gemini API (cloud fallback)
+google-generativeai>=0.3.0

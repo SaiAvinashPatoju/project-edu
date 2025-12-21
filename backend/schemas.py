@@ -1,6 +1,14 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime, date
+from enum import Enum
+
+
+class ContentModel(str, Enum):
+    """Available LLM models for slide generation."""
+    QWEN = "qwen"      # Qwen 2.5 via llama-cpp-python (local)
+    GEMMA = "gemma"    # Gemma 2B via llama-cpp-python (local)
+    GEMINI = "gemini"  # Google Gemini API (cloud)
 
 # User schemas
 class UserBase(BaseModel):

@@ -1,7 +1,7 @@
 import os
 import uuid
 import tempfile
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -240,12 +240,31 @@ async def upload_course_material(
 @app.post("/lectures/process", response_model=ProcessingStartResponse)
 async def process_lecture(
     file: UploadFile = File(...),
-    title: str = None,
-    daily_session_id: int = None,
+    title: str = Form(None),
+    daily_session_id: int = Form(None),
+    model: str = Form("qwen"),  # Model selection: qwen, gemma, or gemini
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Start processing an uploaded lecture audio file"""
+    """Start processing an uploaded lecture audio file.
+    
+    Args:
+        file: Audio file to process
+        title: Optional lecture title
+        daily_session_id: Optional daily session to link
+        model: LLM model for slide generation (qwen, gemma, or gemini)
+    """
+    
+    # Debug: Log received model parameter
+    print(f"[DEBUG] Received model parameter: '{model}'")
+    
+    # Validate model selection
+    valid_models = {"qwen", "gemma", "gemini"}
+    if model.lower() not in valid_models:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid model. Supported: {', '.join(valid_models)}"
+        )
     
     # Validate file
     if not file.filename:
@@ -292,14 +311,18 @@ async def process_lecture(
             content = await file.read()
             buffer.write(content)
         
-        # Submit processing task
-        task_id = processing_pipeline.submit_processing_task(session.id, temp_filepath)
+        # Submit processing task with selected model
+        task_id = processing_pipeline.submit_processing_task(
+            session.id, 
+            temp_filepath,
+            model.lower()
+        )
         
         return ProcessingStartResponse(
             session_id=session.id,
             task_id=task_id,
             status="pending",
-            message="Processing started. Check status for updates."
+            message=f"Processing started with {model} model. Check status for updates."
         )
         
     except Exception as e:

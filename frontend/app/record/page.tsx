@@ -6,12 +6,13 @@ import Link from 'next/link'
 import AuthGuard from '@/components/auth/AuthGuard'
 import AudioRecorder from '@/components/recording/AudioRecorder'
 import { api } from '@/lib/api'
-import { Mic, Calendar, AlertCircle, Info, CheckCircle, ArrowLeft, Upload, Loader2, Sparkles } from 'lucide-react'
+import { Mic, Calendar, AlertCircle, Info, CheckCircle, ArrowLeft, Upload, Loader2, Sparkles, Brain } from 'lucide-react'
 
 export default function RecordPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [lectureTitle, setLectureTitle] = useState('')
+  const [selectedModel, setSelectedModel] = useState('qwen')
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -47,6 +48,10 @@ export default function RecordPage() {
       if (dailySessionId) {
         formData.append('daily_session_id', dailySessionId)
       }
+
+      // Add model selection
+      formData.append('model', selectedModel)
+      console.log('Submitting with model:', selectedModel)
 
       const response = await api.post('/lectures/process', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -179,6 +184,30 @@ export default function RecordPage() {
                       />
                       <p className="mt-2 text-xs text-slate-500">
                         If not provided, we&apos;ll generate a title automatically
+                      </p>
+                    </div>
+
+                    {/* Model Selection */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
+                        <span className="flex items-center gap-2">
+                          <Brain className="w-4 h-4" />
+                          AI Model
+                        </span>
+                      </label>
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all cursor-pointer"
+                      >
+                        <option value="qwen">Qwen 2.5-3B (Local, Recommended)</option>
+                        <option value="gemma">Gemma 3 4B (Local, Lighter)</option>
+                        <option value="gemini">Gemini 2.0 Flash (Cloud)</option>
+                      </select>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {selectedModel === 'qwen' && 'Best quality for detailed slides'}
+                        {selectedModel === 'gemma' && 'Faster, good for quick processing'}
+                        {selectedModel === 'gemini' && 'Cloud-based, requires API key'}
                       </p>
                     </div>
 

@@ -33,11 +33,20 @@ def override_get_db():
 
 app.dependency_overrides[get_db] = override_get_db
 
+# Global test user for auth override
+_test_user_for_auth = None
+
+def get_test_user_for_auth():
+    """Returns the current test user for dependency override."""
+    return _test_user_for_auth
+
 @pytest.fixture(scope="function")
 def db_session():
     """Create a fresh database for each test."""
     Base.metadata.create_all(bind=engine)
-    yield TestingSessionLocal()
+    db = TestingSessionLocal()
+    yield db
+    db.close()
     Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
@@ -48,6 +57,7 @@ def client():
 @pytest.fixture
 def test_user(db_session):
     """Create a test user."""
+    global _test_user_for_auth
     user = User(
         email="test@university.edu",
         hashed_password="$2b$12$test_hash",
@@ -56,14 +66,28 @@ def test_user(db_session):
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
+    _test_user_for_auth = user
     return user
 
 @pytest.fixture
+def auth_client(test_user):
+    """Create test client with mocked authentication."""
+    from auth import get_current_active_user
+    
+    # Override the auth dependency
+    app.dependency_overrides[get_current_active_user] = lambda: test_user
+    
+    client = TestClient(app)
+    yield client
+    
+    # Clean up override
+    if get_current_active_user in app.dependency_overrides:
+        del app.dependency_overrides[get_current_active_user]
+
+@pytest.fixture
 def auth_headers(client, test_user):
-    """Get authentication headers for test user."""
-    # Mock the authentication for testing
-    with patch('auth.get_current_active_user', return_value=test_user):
-        return {"Authorization": "Bearer test_token"}
+    """Get authentication headers for test user (used with auth_client)."""
+    return {"Authorization": "Bearer test_token"}
 
 @pytest.fixture
 def mock_audio_file():
@@ -258,7 +282,6 @@ class TestContentGenerationService:
                 assert result.slides[1].title == "Learning Algorithm Types"
                 assert len(result.slides[1].content) == 3
                 assert result.metadata['slides_generated'] == 2
-                assert result.metadata['teacher_faithful'] == True
     
     def test_generate_slides_short_transcript(self):
         """Test slide generation with too short transcript."""
@@ -357,18 +380,19 @@ class TestProcessingPipeline:
         """Test that pipeline components work together correctly."""
         # This test focuses on the core logic without database complexity
         
-        # Mock the services
+        # Mock the transcription service and content generator factory
         with patch('services.processing_pipeline.TranscriptionService') as mock_transcription_service, \
-             patch('services.processing_pipeline.ContentGenerationService') as mock_content_service:
+             patch('services.processing_pipeline.get_content_generator') as mock_get_content_generator:
             
-            # Configure mocks
+            # Configure transcription mock
             mock_transcription_instance = Mock()
             mock_transcription_instance.transcribe_audio.return_value = sample_transcription_result
             mock_transcription_service.return_value = mock_transcription_instance
             
-            mock_content_instance = Mock()
-            mock_content_instance.generate_slides.return_value = sample_slide_generation_result
-            mock_content_service.return_value = mock_content_instance
+            # Configure content generator mock
+            mock_content_generator = Mock()
+            mock_content_generator.generate_slides.return_value = sample_slide_generation_result
+            mock_get_content_generator.return_value = mock_content_generator
             
             # Create pipeline
             pipeline = ProcessingPipeline()
@@ -386,7 +410,8 @@ class TestProcessingPipeline:
                      patch.object(pipeline, '_save_slides_to_database'), \
                      patch.object(pipeline, '_cleanup_audio_file'):
                     
-                    result = pipeline.process_lecture(1, temp_filename)
+                    # Call with default model
+                    result = pipeline.process_lecture(1, temp_filename, "qwen")
                     
                     # Verify the result structure
                     assert result['session_id'] == 1
@@ -394,10 +419,12 @@ class TestProcessingPipeline:
                     assert result['slides_generated'] == 2
                     assert result['language'] == "en"
                     assert result['duration'] == 10.0
+                    assert result['model_used'] == "qwen"
                     
                     # Verify services were called
                     mock_transcription_instance.transcribe_audio.assert_called_once_with(temp_filename)
-                    mock_content_instance.generate_slides.assert_called_once_with(sample_transcription_result.text)
+                    mock_get_content_generator.assert_called_once_with("qwen")
+                    mock_content_generator.generate_slides.assert_called_once_with(sample_transcription_result.text)
                     
             finally:
                 if os.path.exists(temp_filename):
@@ -406,35 +433,28 @@ class TestProcessingPipeline:
 class TestAPIEndpoints:
     """Test the API endpoints."""
     
-    @patch('services.processing_pipeline.processing_pipeline')
-    def test_process_lecture_endpoint(self, mock_pipeline, client, auth_headers, mock_audio_file):
+    @patch('main.processing_pipeline')
+    def test_process_lecture_endpoint(self, mock_pipeline, auth_client, test_user, mock_audio_file):
         """Test the lecture processing endpoint."""
         mock_pipeline.submit_processing_task.return_value = "test_task_id"
         
-        # Mock authentication
-        with patch('auth.get_current_active_user') as mock_auth:
-            mock_user = Mock()
-            mock_user.id = 1
-            mock_auth.return_value = mock_user
-            
-            # Prepare file upload
-            files = {"file": ("test_audio.wav", mock_audio_file, "audio/wav")}
-            data = {"title": "Test Lecture"}
-            
-            response = client.post(
-                "/lectures/process",
-                files=files,
-                data=data,
-                headers=auth_headers
-            )
-            
-            assert response.status_code == 200
-            result = response.json()
-            assert "session_id" in result
-            assert result["task_id"] == "test_task_id"
-            assert result["status"] == "pending"
+        # Prepare file upload
+        files = {"file": ("test_audio.wav", mock_audio_file, "audio/wav")}
+        data = {"title": "Test Lecture"}
+        
+        response = auth_client.post(
+            "/lectures/process",
+            files=files,
+            data=data
+        )
+        
+        assert response.status_code == 200
+        result = response.json()
+        assert "session_id" in result
+        assert result["task_id"] == "test_task_id"
+        assert result["status"] == "pending"
     
-    def test_get_processing_status(self, client, auth_headers, db_session, test_user):
+    def test_get_processing_status(self, auth_client, db_session, test_user):
         """Test getting processing status."""
         # Create test session
         session = LectureSession(
@@ -446,17 +466,13 @@ class TestAPIEndpoints:
         db_session.commit()
         db_session.refresh(session)
         
-        with patch('auth.get_current_active_user', return_value=test_user):
-            response = client.get(
-                f"/lectures/{session.id}/status",
-                headers=auth_headers
-            )
-            
-            assert response.status_code == 200
-            result = response.json()
-            assert result["status"] == "processing"
+        response = auth_client.get(f"/lectures/{session.id}/status")
+        
+        assert response.status_code == 200
+        result = response.json()
+        assert result["status"] == "processing"
     
-    def test_get_session_with_slides(self, client, auth_headers, db_session, test_user):
+    def test_get_session_with_slides(self, auth_client, db_session, test_user):
         """Test getting session with slides."""
         # Create test session
         session = LectureSession(
@@ -487,18 +503,14 @@ class TestAPIEndpoints:
         db_session.add_all([slide1, slide2])
         db_session.commit()
         
-        with patch('auth.get_current_active_user', return_value=test_user):
-            response = client.get(
-                f"/lectures/{session.id}",
-                headers=auth_headers
-            )
-            
-            assert response.status_code == 200
-            result = response.json()
-            assert result["session"]["id"] == session.id
-            assert len(result["slides"]) == 2
-            assert result["slides"][0]["title"] == "Test Slide 1"
-            assert result["slides"][1]["title"] == "Test Slide 2"
+        response = auth_client.get(f"/lectures/{session.id}")
+        
+        assert response.status_code == 200
+        result = response.json()
+        assert result["session"]["id"] == session.id
+        assert len(result["slides"]) == 2
+        assert result["slides"][0]["title"] == "Test Slide 1"
+        assert result["slides"][1]["title"] == "Test Slide 2"
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -257,21 +257,85 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
     setExportMessage(null)
 
     try {
+      // Start the export
       const result = await apiClient.startExport(sessionId, format)
+      const exportId = result.export_id
+
       setExportMessage({
         type: 'success',
-        text: `${format.toUpperCase()} export started! Check back shortly.`
+        text: `${format.toUpperCase()} export started. Generating file...`
       })
 
-      // Auto-hide success message after 5 seconds
-      setTimeout(() => setExportMessage(null), 5000)
+      // Poll for export completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await apiClient.getExportStatus(exportId)
+
+          if (status.status === 'completed') {
+            clearInterval(pollInterval)
+            setExportMessage({
+              type: 'success',
+              text: `${format.toUpperCase()} ready! Starting download...`
+            })
+
+            // Download the file
+            try {
+              const blob = await apiClient.downloadExport(exportId)
+              const url = window.URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `${sessionData?.session.title || 'lecture'}.${format}`
+              document.body.appendChild(a)
+              a.click()
+              window.URL.revokeObjectURL(url)
+              document.body.removeChild(a)
+
+              setExportMessage({
+                type: 'success',
+                text: `${format.toUpperCase()} downloaded successfully!`
+              })
+              setTimeout(() => setExportMessage(null), 5000)
+            } catch (downloadErr: any) {
+              setExportMessage({
+                type: 'error',
+                text: downloadErr.message || 'Failed to download file'
+              })
+            }
+            setExportLoading(false)
+          } else if (status.status === 'failed') {
+            clearInterval(pollInterval)
+            setExportMessage({
+              type: 'error',
+              text: status.error || 'Export failed'
+            })
+            setExportLoading(false)
+          }
+          // If still processing, continue polling
+        } catch (pollErr) {
+          clearInterval(pollInterval)
+          console.error('Polling error:', pollErr)
+          setExportLoading(false)
+        }
+      }, 2000) // Poll every 2 seconds
+
+      // Timeout after 2 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval)
+        if (exportLoading) {
+          setExportMessage({
+            type: 'error',
+            text: 'Export timed out. Please try again.'
+          })
+          setExportLoading(false)
+        }
+      }, 120000)
+
     } catch (err: any) {
       console.error('Export error:', err)
       setExportMessage({
         type: 'error',
         text: err.message || 'Failed to start export'
       })
-    } finally {
       setExportLoading(false)
     }
   }
@@ -398,7 +462,7 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
       <div className="relative z-10 min-h-screen flex flex-col">
 
         {/* === FLOATING HEADER === */}
-        <div className="flex justify-center pt-6 px-4">
+        <div className="flex justify-center pt-6 px-4 relative z-50">
           <div className="bg-white/95 backdrop-blur-xl border border-slate-200 rounded-2xl px-6 py-3 shadow-xl flex items-center gap-4">
             {/* Back Button */}
             <Link
@@ -443,20 +507,27 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
               </button>
 
               {showExportMenu && !exportLoading && (
-                <div className="absolute right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-50">
-                  <button
-                    onClick={() => handleExport('pdf')}
-                    className="block w-full px-6 py-3 text-left text-slate-700 hover:bg-slate-50 font-medium"
-                  >
-                    📄 Export as PDF
-                  </button>
-                  <button
-                    onClick={() => handleExport('pptx')}
-                    className="block w-full px-6 py-3 text-left text-slate-700 hover:bg-slate-50 font-medium"
-                  >
-                    📊 Export as PPTX
-                  </button>
-                </div>
+                <>
+                  {/* Click-away overlay - rendered BEFORE dropdown so dropdown gets clicks */}
+                  <div
+                    className="fixed inset-0"
+                    onClick={() => setShowExportMenu(false)}
+                  />
+                  <div className="absolute top-full right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl z-[60] flex gap-1 p-2">
+                    <button
+                      onClick={() => handleExport('pdf')}
+                      className="flex items-center gap-2 px-4 py-2.5 text-slate-700 hover:bg-rose-50 hover:text-rose-600 rounded-lg font-medium transition-colors whitespace-nowrap"
+                    >
+                      📄 PDF
+                    </button>
+                    <button
+                      onClick={() => handleExport('pptx')}
+                      className="flex items-center gap-2 px-4 py-2.5 text-slate-700 hover:bg-rose-50 hover:text-rose-600 rounded-lg font-medium transition-colors whitespace-nowrap"
+                    >
+                      📊 PPTX
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -534,14 +605,6 @@ export default function SlidesViewer({ sessionId }: SlidesViewerProps) {
           </div>
         </div>
       </div>
-
-      {/* Click outside to close export menu */}
-      {showExportMenu && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setShowExportMenu(false)}
-        ></div>
-      )}
     </div>
   )
 }

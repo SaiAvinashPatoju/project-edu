@@ -1,6 +1,6 @@
 """
 Main processing pipeline that orchestrates transcription and slide generation.
-Uses local models only: Moonshine ASR + Qwen 2.5 LLM (offline-first).
+Uses local models only: Moonshine ASR + configurable LLM (offline-first).
 """
 import os
 import json
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 
 from .transcription import TranscriptionService
-from .content_generation import ContentGenerationService
+from .content_generation import get_content_generator
 from .task_manager import task_manager
 from models import LectureSession, Slide
 from database import SessionLocal
@@ -24,16 +24,20 @@ class ProcessingPipeline:
         """Initialize the processing pipeline with local model services."""
         # Moonshine ASR for transcription
         self.transcription_service = TranscriptionService()
-        # Qwen 2.5 LLM for slide generation
-        self.content_generation_service = ContentGenerationService()
     
-    def process_lecture(self, session_id: int, audio_file_path: str) -> Dict[str, Any]:
+    def process_lecture(
+        self, 
+        session_id: int, 
+        audio_file_path: str,
+        model: str = "qwen"
+    ) -> Dict[str, Any]:
         """
         Process a lecture through the complete pipeline.
         
         Args:
             session_id: Database ID of the lecture session
             audio_file_path: Path to the uploaded audio file
+            model: LLM model to use ("qwen", "gemma", or "gemini")
             
         Returns:
             Dictionary with processing results
@@ -41,7 +45,7 @@ class ProcessingPipeline:
         Raises:
             Exception: If any step in the pipeline fails
         """
-        logger.info(f"Starting lecture processing for session {session_id}")
+        logger.info(f"Starting lecture processing for session {session_id} with model={model}")
         
         try:
             # Step 1: Update session status to processing
@@ -58,9 +62,10 @@ class ProcessingPipeline:
                 transcription_result.duration
             )
             
-            # Step 3: Generate slides from transcript
-            logger.info(f"Step 2: Generating slides for session {session_id}")
-            slide_generation_result = self.content_generation_service.generate_slides(
+            # Step 3: Generate slides from transcript using selected model
+            logger.info(f"Step 2: Generating slides for session {session_id} using {model}")
+            content_generator = get_content_generator(model)
+            slide_generation_result = content_generator.generate_slides(
                 transcription_result.text
             )
             
@@ -85,7 +90,8 @@ class ProcessingPipeline:
                 'language': transcription_result.language,
                 'duration': transcription_result.duration,
                 'low_confidence_words_count': len(transcription_result.low_confidence_words),
-                'processing_metadata': slide_generation_result.metadata
+                'processing_metadata': slide_generation_result.metadata,
+                'model_used': model
             }
             
             logger.info(f"Lecture processing completed for session {session_id}")
@@ -105,13 +111,19 @@ class ProcessingPipeline:
             
             raise Exception(f"Processing failed: {str(e)}")
     
-    def submit_processing_task(self, session_id: int, audio_file_path: str) -> str:
+    def submit_processing_task(
+        self, 
+        session_id: int, 
+        audio_file_path: str,
+        model: str = "qwen"
+    ) -> str:
         """
         Submit a lecture processing task to the background queue.
         
         Args:
             session_id: Database ID of the lecture session
             audio_file_path: Path to the uploaded audio file
+            model: LLM model to use ("qwen", "gemma", or "gemini")
             
         Returns:
             Task ID for tracking the processing
@@ -119,10 +131,11 @@ class ProcessingPipeline:
         task_id = task_manager.submit_task(
             self.process_lecture,
             session_id,
-            audio_file_path
+            audio_file_path,
+            model
         )
         
-        logger.info(f"Processing task {task_id} submitted for session {session_id}")
+        logger.info(f"Processing task {task_id} submitted for session {session_id} with model={model}")
         return task_id
     
     def _update_session_status(self, session_id: int, status: str):
