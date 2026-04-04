@@ -311,7 +311,7 @@ huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF \
 | Variable | Default | Required | Description |
 |---|---|---|---|
 | `DATABASE_URL` | `sqlite:///./lectures.db` | Yes | SQLAlchemy connection string |
-| `SECRET_KEY` | — | **Yes** | JWT signing key (min 32 chars; generate a secure random value) |
+| `SECRET_KEY` | — | **Yes** | JWT signing key — generate with `openssl rand -hex 32` or `python -c 'import secrets; print(secrets.token_hex(32))'` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | No | JWT lifetime in minutes |
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | Yes | Comma-separated CORS origins |
 | `MOONSHINE_MODEL` | `moonshine/base` | No | Moonshine model variant (`moonshine/tiny` or `moonshine/base`) |
@@ -601,7 +601,7 @@ Test files are located in `frontend/__tests__/` and cover:
 | Secret management | `SECRET_KEY` loaded from environment; never hardcoded |
 
 > **Production checklist before going live:**
-> 1. Generate a cryptographically random `SECRET_KEY` (≥32 chars)
+> 1. Generate a cryptographically random `SECRET_KEY`: `openssl rand -hex 32` or `python -c 'import secrets; print(secrets.token_hex(32))'`
 > 2. Set `ALLOWED_ORIGINS` to your exact frontend domain(s)
 > 3. Enable Nginx HTTPS and provide valid TLS certificates
 > 4. Switch `DATABASE_URL` from SQLite to PostgreSQL
