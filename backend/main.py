@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 import tempfile
@@ -7,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 from database import get_db, init_db
 from auth import (
@@ -102,11 +105,10 @@ async def guest_login(guest: GuestLogin, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        logger.exception("Guest login failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Guest login failed: {str(e)}"
+            detail="Guest login failed. Please try again."
         )
 
 # Daily Session endpoints
@@ -255,8 +257,7 @@ async def process_lecture(
         model: LLM model for slide generation (qwen, gemma, or gemini)
     """
     
-    # Debug: Log received model parameter
-    print(f"[DEBUG] Received model parameter: '{model}'")
+    logger.debug("Received model parameter: '%s'", model)
     
     # Validate model selection
     valid_models = {"qwen", "gemma", "gemini"}
@@ -326,10 +327,11 @@ async def process_lecture(
         )
         
     except Exception as e:
+        logger.exception("Failed to start processing for user %s", current_user.id)
         db.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to start processing: {str(e)}"
+            detail="Failed to start processing. Please try again."
         )
 
 @app.get("/lectures/{session_id}/status", response_model=ProcessingStatusResponse)

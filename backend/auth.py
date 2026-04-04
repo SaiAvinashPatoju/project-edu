@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional
+import logging
 import os
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -11,6 +12,8 @@ from models import User
 import re
 import uuid
 
+logger = logging.getLogger(__name__)
+
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -20,6 +23,11 @@ oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=
 
 # JWT settings
 SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 GUEST_TOKEN_EXPIRE_MINUTES = 10  # Fixed 10-minute expiry for guests
@@ -101,20 +109,19 @@ def create_user(db: Session, email: str, password: str) -> User:
 
 def create_guest_user(db: Session, email: str) -> User:
     """Create a temporary guest user with 10-minute expiry"""
-    print(f"DEBUG: create_guest_user called for {email}")
+    logger.info("create_guest_user called")
     try:
         if not validate_email_format(email):
-            print("DEBUG: Invalid email format")
+            logger.debug("Invalid email format supplied for guest login")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Please enter a valid email address"
             )
         
         # Check if email is already used by a regular user
-        print("DEBUG: Checking existing user")
         existing_user = get_user_by_email(db, email)
         if existing_user:
-            print(f"DEBUG: Found existing user. Is Guest: {existing_user.is_guest}")
+            logger.debug("Found existing user for guest login attempt")
             if not existing_user.is_guest:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -123,14 +130,12 @@ def create_guest_user(db: Session, email: str) -> User:
         
         # If existing guest user, update expiry
         if existing_user and existing_user.is_guest:
-            print("DEBUG: Updating existing guest expiry")
             existing_user.guest_expires_at = datetime.utcnow() + timedelta(minutes=GUEST_TOKEN_EXPIRE_MINUTES)
             db.commit()
             db.refresh(existing_user)
             return existing_user
         
         # Create new guest user with random password (won't be used)
-        print("DEBUG: Creating new guest user")
         guest_expires = datetime.utcnow() + timedelta(minutes=GUEST_TOKEN_EXPIRE_MINUTES)
         random_password = get_password_hash(str(uuid.uuid4()))
         
@@ -140,36 +145,28 @@ def create_guest_user(db: Session, email: str) -> User:
             is_guest=True,
             guest_expires_at=guest_expires
         )
-        print("DEBUG: Adding user to session")
         db.add(db_user)
-        print("DEBUG: Committing session")
         db.commit()
-        print("DEBUG: Refreshing user")
         db.refresh(db_user)
-        print("DEBUG: Guest user created successfully")
+        logger.info("Guest user created successfully")
         return db_user
     
     except HTTPException:
         raise
     except Exception as e:
-        print(f"DEBUG: Error creating guest user: {e}")
+        logger.error("Error creating guest user: %s", e)
         db.rollback()
         
         # Self-healing: Try to migrate DB and retry if column is missing
         if "no such column" in str(e).lower():
             try:
-                print("DEBUG: Attempting self-healing migration...")
+                logger.warning("Attempting self-healing migration for missing column")
                 from database import init_db
                 init_db()
                 
-                # Retry operation logic needs to be careful about existing user check
-                print("DEBUG: Retrying guest creation after migration...")
-                
-                # Since we just migrated, re-running the check should be safe if it was a column error
-                # Re-check existing user first (checking for email in DB)
                 existing_retry = get_user_by_email(db, email)
                 if existing_retry and not existing_retry.is_guest:
-                     raise HTTPException(
+                    raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="This email is registered. Please sign in instead."
                     )
@@ -194,12 +191,12 @@ def create_guest_user(db: Session, email: str) -> User:
                 db.refresh(db_user_retry)
                 return db_user_retry
             except Exception as retry_e:
-                print(f"DEBUG: Self-healing failed: {retry_e}")
-                # Fall through to raise original error
+                logger.error("Self-healing migration failed: %s", retry_e)
+                # Fall through to raise generic error
         
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(e)}"
+            detail="An internal error occurred. Please try again."
         )
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
